@@ -6,21 +6,49 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "buat-admin": "node scripts/buat-admin.mjs",
+    "db:migrasi": "node scripts/migrasi.mjs",
+    "db:cek": "node scripts/migrasi.mjs --cek",
+    "db:verifikasi": "node scripts/verifikasi-db.mjs",
+    "db:uji": "node scripts/uji-koneksi.mjs",
+    "contoh-ekspor": "tsx scripts/contoh-ekspor.mts",
+    "buat-akun-upt": "node scripts/buat-akun-upt.mjs",
+    "uji-halaman": "node scripts/uji-halaman.mjs",
+    "e2e": "playwright test",
+    "impor-aset": "node scripts/impor-aset.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
+    "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
+    "lucide-react": "^1.43.0",
     "next": "16.3.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "recharts": "^3.10.1",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.6.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^22.20.2",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "pg": "^8.23.0",
+    "saxes": "^6.0.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.23.13",
+    "typescript": "^5",
+    "vitest": "^5.0.0",
+    "yauzl": "^3.4.0"
   }
 }

@@ -1,26 +1,226 @@
 @import "tailwindcss";
 
+/* Mode gelap dikendalikan kelas `.gelap` pada <html>, bukan prefers-color-scheme,
+   supaya pilihan pengguna bisa menimpa setelan sistem. */
+@custom-variant dark (&:where(.gelap, .gelap *));
+
+/* ==================================================================
+   Tema IKSI — biru dominan.
+   Skala biru dirancang agar teks putih di atas --brand-600 ke atas
+   selalu lolos kontras WCAG AA.
+   ================================================================== */
+
+@theme {
+  --color-brand-50:  #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
+
+  /* Warna kategori kinerja — dipakai lencana, grafik, dan baris tabel. */
+  --color-kat-sb: #059669;
+  --color-kat-b:  #0284c7;
+  --color-kat-k:  #d97706;
+  --color-kat-j:  #e11d48;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 0.875rem;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --latar: #f5f7fb;
+  --permukaan: #ffffff;
+  --teks: #0f172a;
+  --teks-lembut: #64748b;
+  --garis: #e2e8f0;
+
+  /* Warna noda gradien mesh pada halaman Masuk. */
+  --mesh-1: rgb(59 130 246 / 0.28);
+  --mesh-2: rgb(14 165 233 / 0.22);
+  --mesh-3: rgb(99 102 241 / 0.22);
+  --mesh-4: rgb(45 212 191 / 0.18);
+  --mesh-latar: #eef4ff;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+.gelap {
+  --latar: #0b1220;
+  --permukaan: #111a2e;
+  --teks: #e8eefc;
+  --teks-lembut: #94a3b8;
+  --garis: #1e2b45;
+
+  --mesh-1: rgb(37 99 235 / 0.34);
+  --mesh-2: rgb(14 165 233 / 0.22);
+  --mesh-3: rgb(99 102 241 / 0.30);
+  --mesh-4: rgb(20 184 166 / 0.16);
+  --mesh-latar: #070c17;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Peralihan tema tidak dianimasikan pada elemen yang sedang bertransisi
+   sendiri (mis. toast), supaya tidak saling tabrakan. */
+html.transisi-tema,
+html.transisi-tema * {
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease;
+}
+
+@layer base {
+  * {
+    border-color: var(--garis);
+  }
+
+  body {
+    background-color: var(--latar);
+    color: var(--teks);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Sembunyikan spinner input number — nilai diisi lewat slider/tombol. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    appearance: textfield;
+  }
+
+  /* Fokus keyboard yang konsisten di seluruh aplikasi. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Bilah sisa waktu pada toast. Memakai transform agar animasinya berjalan di
+   compositor — tidak memicu layout, dan tetap mulus meski halaman sibuk. */
+@keyframes toast-susut {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* Latar mesh gradient halaman Masuk: beberapa noda radial yang saling menimpa.
+   Memakai gradien, bukan gambar, agar tetap tajam di layar mana pun dan ikut
+   berubah saat tema diganti. */
+@layer components {
+  .latar-mesh {
+    background-color: var(--mesh-latar);
+    background-image:
+      radial-gradient(at 18% 22%, var(--mesh-1) 0px, transparent 55%),
+      radial-gradient(at 82% 12%, var(--mesh-2) 0px, transparent 50%),
+      radial-gradient(at 72% 78%, var(--mesh-3) 0px, transparent 55%),
+      radial-gradient(at 22% 88%, var(--mesh-4) 0px, transparent 50%);
+  }
+}
+
+@layer components {
+  .kartu {
+    background-color: var(--permukaan);
+    border: 1px solid var(--garis);
+    border-radius: var(--radius-card);
+  }
+
+  /* Slider nilai indikator.
+     `accent-color` bawaan browser menyerahkan bentuk thumb ke sistem operasi —
+     di Windows hasilnya kotak gelap dan bagian track yang terisi tidak ikut
+     berwarna. Jadi seluruh tampilannya digambar sendiri: track abu-abu dengan
+     porsi terisi diwarnai gradien, thumb bulat putih bercincin warna kategori.
+     Komponen mengisi --warna-slider (warna kategori) dan --isi-slider (persen). */
+  .slider-nilai {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 1.25rem;
+    background: transparent;
+    --jalur-slider: var(--garis);
+  }
+
+  .slider-nilai::-webkit-slider-runnable-track {
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: linear-gradient(
+      to right,
+      var(--warna-slider) var(--isi-slider),
+      var(--jalur-slider) var(--isi-slider)
+    );
+  }
+  .slider-nilai::-moz-range-track {
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: linear-gradient(
+      to right,
+      var(--warna-slider) var(--isi-slider),
+      var(--jalur-slider) var(--isi-slider)
+    );
+  }
+
+  .slider-nilai::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 1rem;
+    width: 1rem;
+    /* Menengahkan thumb 16px pada track 6px. */
+    margin-top: -0.3125rem;
+    border-radius: 9999px;
+    background: var(--permukaan);
+    border: 2px solid var(--warna-slider);
+    box-shadow: 0 1px 3px rgb(15 23 42 / 0.2);
+    transition:
+      transform 120ms ease,
+      box-shadow 120ms ease;
+  }
+  .slider-nilai::-moz-range-thumb {
+    height: 1rem;
+    width: 1rem;
+    border-radius: 9999px;
+    background: var(--permukaan);
+    border: 2px solid var(--warna-slider);
+    box-shadow: 0 1px 3px rgb(15 23 42 / 0.2);
+    transition:
+      transform 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  .slider-nilai:not(:disabled):hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+  }
+  .slider-nilai:not(:disabled):hover::-moz-range-thumb {
+    transform: scale(1.15);
+  }
+  .slider-nilai:not(:disabled):active::-webkit-slider-thumb {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--warna-slider) 18%, transparent);
+  }
+  .slider-nilai:not(:disabled):active::-moz-range-thumb {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--warna-slider) 18%, transparent);
+  }
+
+  /* Scrollbar ramping untuk tabel rekap yang lebar. */
+  .scroll-halus {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-brand-200) transparent;
+  }
+  .scroll-halus::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+  }
+  .scroll-halus::-webkit-scrollbar-thumb {
+    background-color: var(--color-brand-200);
+    border-radius: 9999px;
+  }
+  .scroll-halus::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
