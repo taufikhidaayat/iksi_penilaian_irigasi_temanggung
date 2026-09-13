@@ -14,6 +14,7 @@ import {
   LogOut,
   MapPin,
   Menu,
+  ShieldCheck,
   Users,
   X,
   type LucideIcon,
@@ -44,11 +45,13 @@ interface ShellProps {
   namaUpt: string;
   /** Kode singkat UPT ("R1"…"R6") dipakai sebagai inisial avatar; null untuk admin. */
   kodeUpt: string | null;
+  /** Admin memakai ikon khusus sebagai avatar, bukan inisial. */
+  isAdmin: boolean;
   onKeluar: () => Promise<void>;
   children: React.ReactNode;
 }
 
-export function Shell({ menu, nama, peran, namaUpt, kodeUpt, onKeluar, children }: ShellProps) {
+export function Shell({ menu, nama, peran, namaUpt, kodeUpt, isAdmin, onKeluar, children }: ShellProps) {
   const pathname = usePathname();
   const konfirmasi = useKonfirmasi();
   const [bukaMobile, setBukaMobile] = useState(false);
@@ -132,7 +135,7 @@ export function Shell({ menu, nama, peran, namaUpt, kodeUpt, onKeluar, children 
       <div className="mt-auto border-t border-white/10 p-3">
         <div className="flex items-center gap-3 rounded-lg px-2 py-2">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-semibold text-white">
-            {inisial || "?"}
+            {isAdmin ? <ShieldCheck className="h-4.5 w-4.5" aria-hidden /> : inisial || "?"}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-white">{namaTampil}</p>

@@ -13,7 +13,8 @@ export default async function LayoutAplikasi({ children }: LayoutProps<"/">) {
       nama={sesi.profil.nama}
       peran={sesi.isAdmin ? "Administrator" : "UPT"}
       namaUpt={sesi.isAdmin ? "Semua UPT" : (sesi.upt?.nama ?? "—")}
-      kodeUpt={sesi.isAdmin ? "AD" : (sesi.upt?.kode ?? null)}
+      kodeUpt={sesi.isAdmin ? null : (sesi.upt?.kode ?? null)}
+      isAdmin={sesi.isAdmin}
       onKeluar={keluar}
     >
       {children}
