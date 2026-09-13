@@ -14,11 +14,11 @@ import {
   LogOut,
   MapPin,
   Menu,
-  ShieldCheck,
   Users,
   X,
   type LucideIcon,
 } from "lucide-react";
+import { FaUserGear } from "react-icons/fa6";
 
 import { useKonfirmasi } from "@/components/ui/konfirmasi";
 import { type ItemNav, type KunciIkon, aktif } from "@/lib/nav";
@@ -135,7 +135,7 @@ export function Shell({ menu, nama, peran, namaUpt, kodeUpt, isAdmin, onKeluar, 
       <div className="mt-auto border-t border-white/10 p-3">
         <div className="flex items-center gap-3 rounded-lg px-2 py-2">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-semibold text-white">
-            {isAdmin ? <ShieldCheck className="h-4.5 w-4.5" aria-hidden /> : inisial || "?"}
+            {isAdmin ? <FaUserGear className="h-4.5 w-4.5" aria-hidden /> : inisial || "?"}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-white">{namaTampil}</p>
