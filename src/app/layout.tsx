@@ -13,9 +13,18 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  /*
+   * Judul tab peramban. Dipendekkan dengan menyebut kabupatennya, bukan
+   * memanjangkannya: tab yang sempit memotong judul panjang di tengah, dan
+   * yang tersisa terbaca justru bagian depannya.
+   *
+   * Yang lama, "Sistem Penilaian Kinerja Sistem Irigasi", memuat kata "Sistem"
+   * dua kali dan menghilangkan kata "Indeks" yang justru jadi inti singkatan
+   * IKSI.
+   */
   title: {
-    default: "Sistem Penilaian Kinerja Sistem Irigasi",
-    template: "%s · Sistem Penilaian Kinerja Sistem Irigasi",
+    default: "Penilaian IKSI · Kabupaten Temanggung",
+    template: "%s · Penilaian IKSI Kabupaten Temanggung",
   },
   description:
     "Penilaian Indeks Kinerja Sistem Irigasi (IKSI) Kabupaten Temanggung sesuai Permen PUPR No. 12/PRT/M/2015.",

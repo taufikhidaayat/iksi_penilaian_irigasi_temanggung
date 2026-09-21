@@ -125,7 +125,10 @@ export function Shell({ menu, nama, peran, namaUpt, kodeUpt, isAdmin, onKeluar, 
         />
         <div>
           <p className="text-sm font-semibold tracking-tight text-white">SIKSI</p>
-          <p className="mt-0.5 text-[11px] leading-snug text-brand-300">Sistem Penilaian Kinerja Irigasi</p>
+          {/* Kepanjangan IKSI ditulis utuh di sini, sama dengan halaman masuk. */}
+          <p className="mt-0.5 text-[11px] leading-snug text-brand-300">
+            Penilaian Indeks Kinerja Sistem Irigasi
+          </p>
           <p className="mt-1 text-[11px] text-brand-400">Kab. Temanggung</p>
         </div>
       </div>

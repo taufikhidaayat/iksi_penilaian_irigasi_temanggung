@@ -66,11 +66,28 @@ export function PanelMerek() {
               />
             </svg>
           </div>
-          <h2 className="text-2xl leading-snug font-semibold text-white drop-shadow-sm">
-            Penilaian Kinerja Sistem
-            <br />
-            Irigasi
-          </h2>
+          {/*
+            Judulnya dibiarkan membungkus sendiri, tanpa <br /> yang memaksa
+            patahan di tempat tetap: panel ini melebar mengikuti layar, dan
+            patahan yang dipaksa akan terlihat janggal di lebar yang lain.
+            `text-balance` membagi barisnya rata supaya tidak ada satu kata
+            yang menggantung sendirian di baris terakhir.
+          */}
+          <div className="min-w-0">
+            <h2 className="text-2xl leading-snug font-semibold text-balance text-white drop-shadow-sm">
+              Penilaian Indeks Kinerja Sistem Irigasi
+            </h2>
+            {/*
+              Satu tingkat di bawah judul, bukan dua: `text-base` masih jelas
+              terbaca sebagai bagian dari kepala halaman, sedangkan `text-sm`
+              tadi terbaca seperti keterangan kecil yang tidak penting.
+              Ketebalannya ditahan di `font-medium` supaya tidak bersaing
+              dengan judulnya.
+            */}
+            <p className="mt-1.5 text-base font-medium text-white/90 drop-shadow-sm">
+              Kabupaten Temanggung
+            </p>
+          </div>
         </div>
       </div>
     </div>
