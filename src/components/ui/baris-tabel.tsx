@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 /**
- * Baris tabel yang bisa diklik di mana saja untuk membuka detail — bukan cuma
- * lewat tautan nama D.I. atau ikon panah di ujung kanan. Kedua tautan asli itu
+ * Baris tabel yang bisa diklik di mana saja untuk membuka tautan tujuannya,
+ * bukan cuma lewat tautan teks atau ikon panah di dalam baris. Tautan asli itu
  * tetap dipertahankan di dalam (untuk navigasi keyboard, klik-kanan buka tab
  * baru, dan pembaca layar); `onClick` di sini cuma kemudahan tambahan untuk
  * mouse, jadi tidak perlu tabIndex/peran ARIA sendiri di elemen <tr>-nya.

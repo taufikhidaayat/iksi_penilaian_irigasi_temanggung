@@ -3,12 +3,13 @@
 import * as React from "react";
 
 import { Check, ChevronDown } from "lucide-react";
+import { FaFileExcel } from "react-icons/fa6";
 
 import { cn } from "@/lib/utils";
 
 /* ----------------------------------------------------------- Tombol */
 
-type VarianTombol = "utama" | "sekunder" | "garis" | "hantu" | "bahaya" | "peringatan";
+type VarianTombol = "utama" | "sekunder" | "garis" | "hantu" | "bahaya" | "peringatan" | "excel";
 type UkuranTombol = "sm" | "md" | "lg" | "ikon";
 
 const VARIAN: Record<VarianTombol, string> = {
@@ -24,6 +25,10 @@ const VARIAN: Record<VarianTombol, string> = {
   // Sama seperti nada "peringatan" di dialog konfirmasi (amber) — untuk aksi yang
   // mengubah/mengosongkan data tapi tidak sepenuhnya menghapusnya (mis. "Ulangi").
   peringatan: "bg-amber-500 text-white shadow-sm hover:bg-amber-600 active:bg-amber-700 disabled:bg-amber-300",
+  // Hijau Excel. Dipakai HANYA oleh tombol yang menghasilkan berkas .xlsx —
+  // lihat catatan pada --color-excel-600 di globals.css.
+  excel:
+    "bg-excel-600 text-white shadow-sm hover:bg-excel-700 active:bg-excel-800 disabled:bg-excel-600/40",
 };
 
 const UKURAN: Record<UkuranTombol, string> = {
@@ -57,6 +62,23 @@ export const Tombol = React.forwardRef<HTMLButtonElement, TombolProps>(function 
     />
   );
 });
+
+/* ------------------------------------------------------- Ikon Excel */
+
+/**
+ * Penanda berkas .xlsx, dipakai seluruh proyek.
+ *
+ * Logo Microsoft Excel yang sebenarnya tidak tersedia di paket ikon yang
+ * terpasang — Simple Icons mencabut ikon merek Microsoft karena lisensi — jadi
+ * yang dipakai lambang berkas Excel dari Font Awesome. Dibungkus di sini supaya
+ * kalau suatu saat lambangnya diganti, cukup satu berkas yang disunting.
+ *
+ * Di atas tombol varian "excel" ikonnya putih; di atas latar terang ia memakai
+ * hijau Excel lewat `className`.
+ */
+export function IkonExcel({ className }: { className?: string }) {
+  return <FaFileExcel className={cn("h-4 w-4 shrink-0", className)} aria-hidden />;
+}
 
 /* ------------------------------------------------------------ Kartu */
 
@@ -169,6 +191,29 @@ interface OpsiPilihan {
   disabled: boolean;
 }
 
+/**
+ * Merangkai isi sebuah <option> menjadi teks.
+ *
+ * Isi option kerap tersusun dari beberapa potong, mis.
+ * `<option>{d.nama} ({d.kode})</option>` yang bagi React adalah array
+ * `["D.I. Aji Bandunggede", " (", "33230287", ")"]`, bukan satu string.
+ *
+ * Versi sebelumnya hanya menerima string atau angka dan selebihnya jatuh ke
+ * NILAI option. Akibatnya dropdown Daerah Irigasi di dialog Aset menampilkan
+ * "287" — id barisnya — padahal seharusnya "D.I. Aji Bandunggede (33230287)".
+ * Select aslinya tetap benar, jadi datanya tersimpan dengan betul; yang salah
+ * hanya yang dibaca petugas, dan itu justru yang dipakai untuk memutuskan.
+ */
+function teksAnak(anak: React.ReactNode): string {
+  if (anak == null || typeof anak === "boolean") return "";
+  if (typeof anak === "string" || typeof anak === "number") return String(anak);
+  if (Array.isArray(anak)) return anak.map(teksAnak).join("");
+  if (React.isValidElement(anak)) {
+    return teksAnak((anak.props as { children?: React.ReactNode }).children);
+  }
+  return "";
+}
+
 /** Membaca elemen <option> anak jadi data polos — termasuk yang datang dari .map() atau kondisi (&&). */
 function opsiDariAnak(children: React.ReactNode): OpsiPilihan[] {
   const hasil: OpsiPilihan[] = [];
@@ -176,7 +221,8 @@ function opsiDariAnak(children: React.ReactNode): OpsiPilihan[] {
     if (!React.isValidElement(anak) || anak.type !== "option") return;
     const p = anak.props as React.OptionHTMLAttributes<HTMLOptionElement>;
     const nilai = p.value == null ? "" : String(p.value);
-    const label = typeof p.children === "string" || typeof p.children === "number" ? String(p.children) : nilai;
+    // Nilai hanya dipakai sebagai jaring terakhir, bila option memang kosong.
+    const label = teksAnak(p.children).trim() || nilai;
     hasil.push({ nilai, label, disabled: Boolean(p.disabled) });
   });
   return hasil;
@@ -355,7 +401,17 @@ export const Pilihan = React.forwardRef<
           role="listbox"
           id={listboxId}
           className={cn(
-            "absolute z-20 mt-1.5 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1.5",
+            // z-40, bukan z-20: bilah tab pada form penilaian juga z-20 dan
+            // berada lebih belakang di DOM, sehingga pada nilai yang sama panel
+            // ini kalah dan tertimpa. Pembungkus `relative` di atas tidak
+            // membuat konteks penumpukan sendiri, jadi perbandingannya terjadi
+            // di tingkat halaman. Menaikkan nilai di sini lebih tepat daripada
+            // menurunkan bilah tab, yang memang harus menutupi isi saat digulir.
+            //
+            // Urutan lapisan aplikasi: bilah tab 20 < header 30 < panel ini 40
+            // < laci sidebar 50 < toast 100. Panel harus tetap di bawah laci,
+            // supaya dropdown di balik laci yang terbuka tidak menembusnya.
+            "absolute z-40 mt-1.5 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1.5",
             "text-sm shadow-lg dark:border-slate-700 dark:bg-slate-900",
           )}
         >

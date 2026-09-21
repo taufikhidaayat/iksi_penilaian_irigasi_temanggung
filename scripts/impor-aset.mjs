@@ -184,6 +184,64 @@ const ambil = (b, ...nama) => {
 
 const rapikan = (s) => s.replace(/\s+/g, " ").trim();
 
+/** Golongan 01 pada segmen ke-3 nomor aset; sisanya golongan 02 (tanah). */
+const JENIS_BANGUNAN = new Set([
+  "bendung",
+  "saluran",
+  "sadap",
+  "saluran_pelimpah",
+  "terjunan",
+  "talang",
+  "gorong_gorong",
+  "bangunan_pengaman",
+]);
+
+/** Segmen ke-3 menurut golongan: 01 bangunan (BAB III), 02 tanah (BAB IV). */
+function segmenGolongan(jenis) {
+  return JENIS_BANGUNAN.has(jenis) ? "010306" : "020306";
+}
+
+/**
+ * Membetulkan segmen golongan tanpa menyentuh bagian lain nomornya.
+ *
+ * Buku menulis `010306` untuk SELURUH aset, termasuk 1.615 aset tanah,
+ * sehingga golongan tidak terbaca dari nomornya. Penggantiannya memakai
+ * regex dan hanya menyasar ruas ke-3, bukan menyusun ulang nomor dari
+ * potongan: 13 nomor di buku punya segmen ke-4 dan ke-5 yang tertulis
+ * menyatu, dan bagian itu harus lewat apa adanya supaya tetap terlihat
+ * sebagai pekerjaan perapian, bukan diam-diam dirapikan skrip.
+ */
+function terapkanGolongan(kode, jenis) {
+  if (!kode || kode.split(".").length < 3) return kode;
+  return kode.replace(/^([^.]*\.[^.]*\.)[^.]*/, `$1${segmenGolongan(jenis)}`);
+}
+
+/**
+ * Menyusun nomor aset berformat SIKSI dari nomor buku.
+ *
+ * Buku memberi nomor yang seragam untuk seluruh kabupaten; segmen ke-3 dibuat
+ * menyatakan golongan (01 bangunan / 02 tanah) dan segmen ke-4 diberi awalan
+ * 2 digit UPT. Lihat supabase/migrations/0010_kode_aset_upt.sql.
+ *
+ * Hasilnya ditulis ke kolom `kode` — inilah nomor yang ditampilkan. Nomor asli
+ * buku tetap tersimpan di `kode_buku` dan tetap ikut dicari, supaya petugas
+ * yang mengetik nomor dari berkas cetak tetap menemukan barisnya.
+ * Lihat migrasi 0014_golongan_aset.sql dan 0016_kode_upt.sql.
+ *
+ * Nomor yang tidak bisa dikonversi (D.I. tak dikenal, format tidak baku)
+ * dikembalikan apa adanya; baris itu memang sudah ditandai perlu_tinjau.
+ */
+function kodefikasi(kode, di) {
+  if (!kode || !di) return kode;
+  const bagian = kode.split(".");
+  // Segmen ke-4 yang lebih dari 5 digit berarti segmen ke-4 dan ke-5 tertulis
+  // menyatu di buku (13 baris). Menimpanya akan ikut memusnahkan segmen ke-5.
+  if (bagian.length !== 6 || bagian[3].length > 5) return kode;
+  const nomorDi = Number(String(di.kode).slice(-4));
+  bagian[3] = String(di.upt_id).padStart(2, "0") + String(nomorDi).padStart(3, "0");
+  return bagian.join(".");
+}
+
 function olah(b) {
   const info = SEKSI[b.tabel - 1];
   if (!info) return null;
@@ -215,7 +273,9 @@ function olah(b) {
   return {
     jenis,
     seksi_buku: seksi,
-    kode: kode || null,
+    // Segmen wilayahnya dipasang belakangan, setelah D.I.-nya ketemu.
+    kode: terapkanGolongan(kode || null, jenis),
+    kode_buku: kode || null,
     nomenklatur: nomenklatur || null,
     nama: nama || "(tanpa nama)",
     kode_di_buku: kodeDi,
@@ -236,7 +296,21 @@ const stream = await bukaDocumentXml(BUKU);
 const barisTabel = await bacaBarisTabel(stream);
 console.log(`  ${barisTabel.length} baris tabel terbaca`);
 
-const aset = barisTabel.map(olah).filter(Boolean);
+/**
+ * Jenis yang TIDAK lagi bersumber dari Buku Aset.
+ *
+ * Bendung kini berasal dari berkas GIS `SDY bendung Kab.dbf` lewat
+ * `npm run ganti-aset-bendung`, termasuk 26 bendung yang sama sekali tidak ada
+ * di buku. Kalau skrip ini tetap mengimpor bendung dari buku, seluruh hasil
+ * penggantian itu tertimpa diam-diam dan 26 bendung tadi hilang untuk
+ * selamanya, sebab tidak ada sumbernya di dokumen ini.
+ */
+const JENIS_BUKAN_DARI_BUKU = ["bendung"];
+
+const aset = barisTabel
+  .map(olah)
+  .filter(Boolean)
+  .filter((a) => !JENIS_BUKAN_DARI_BUKU.includes(a.jenis));
 console.log(`  ${aset.length} baris aset\n`);
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -250,13 +324,13 @@ const sb = createClient(url, secret, { auth: { persistSession: false } });
 // Peta kode D.I. 4 digit -> id, untuk menautkan aset ke daerah_irigasi.
 const { data: diRows, error: eDi } = await sb
   .from("daerah_irigasi")
-  .select("id, kode, nama")
+  .select("id, kode, nama, upt_id")
   .limit(2000);
 if (eDi) {
   console.error("Gagal membaca daerah_irigasi:", eDi.message);
   process.exit(1);
 }
-const petaDi = new Map(diRows.map((d) => [String(d.kode).slice(-4), d.id]));
+const petaDi = new Map(diRows.map((d) => [String(d.kode).slice(-4), d]));
 
 const hitung = { total: aset.length, tertaut: 0, tanpaDi: 0, tinjau: 0 };
 const perJenis = {};
@@ -264,7 +338,12 @@ const diTakDikenal = new Map();
 
 for (const a of aset) {
   perJenis[a.jenis] = (perJenis[a.jenis] ?? 0) + 1;
-  a.di_id = a.kode_di_buku ? (petaDi.get(a.kode_di_buku) ?? null) : null;
+  const di = a.kode_di_buku ? (petaDi.get(a.kode_di_buku) ?? null) : null;
+  a.di_id = di?.id ?? null;
+  // Segmen wilayah baru bisa dipasang setelah D.I.-nya ketemu. Aset yang
+  // tidak tertaut dibiarkan berformat buku: menebak UPT-nya justru
+  // menyembunyikan pekerjaan perapian yang memang harus dilakukan.
+  if (di?.upt_id) a.kode = kodefikasi(a.kode, di);
   if (a.di_id) hitung.tertaut += 1;
   else {
     hitung.tanpaDi += 1;
@@ -300,10 +379,20 @@ if (HANYA_PERIKSA) {
 
 /* ------------------------------------------------------------- tulis ke DB */
 
-const { count: sudahAda } = await sb.from("aset").select("*", { count: "exact", head: true });
+// Hanya jenis yang memang bersumber dari buku yang dikosongkan. Menghapus
+// seluruh tabel akan ikut menghapus bendung hasil berkas GIS, dan bersamanya
+// nilai penilaian per bangunan yang menunjuk `aset.id` dengan `on delete
+// cascade`.
+const DILEWATI = `(${JENIS_BUKAN_DARI_BUKU.join(",")})`;
+
+const { count: sudahAda } = await sb
+  .from("aset")
+  .select("*", { count: "exact", head: true })
+  .not("jenis", "in", DILEWATI);
 if (sudahAda) {
-  console.log(`\nTabel aset sudah berisi ${sudahAda} baris — dikosongkan dulu.`);
-  const { error } = await sb.from("aset").delete().gt("id", 0);
+  console.log(`\nTabel aset sudah berisi ${sudahAda} baris dari buku — dikosongkan dulu.`);
+  console.log(`  jenis ${JENIS_BUKAN_DARI_BUKU.join(", ")} dilewati: sumbernya bukan buku ini.`);
+  const { error } = await sb.from("aset").delete().not("jenis", "in", DILEWATI);
   if (error) {
     console.error("Gagal mengosongkan:", error.message);
     process.exit(1);

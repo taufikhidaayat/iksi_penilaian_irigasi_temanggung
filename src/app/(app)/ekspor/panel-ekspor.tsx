@@ -3,9 +3,19 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { AlertTriangle, Download, FileSpreadsheet, Info } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 
-import { Centang, Input, Kartu, KartuIsi, KartuJudul, KartuKepala, Label, Tombol } from "@/components/ui";
+import {
+  Centang,
+  IkonExcel,
+  Input,
+  Kartu,
+  KartuIsi,
+  KartuJudul,
+  KartuKepala,
+  Label,
+  Tombol,
+} from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import type { PeriodeTriwulan } from "@/lib/supabase/types";
 
@@ -173,8 +183,8 @@ export function PanelEkspor({
             )
           }
         >
-          <Tombol ukuran="lg" className="w-full">
-            <Download className="h-4 w-4" />
+          <Tombol varian="excel" ukuran="lg" className="w-full">
+            <IkonExcel />
             Unduh Excel
           </Tombol>
         </a>
@@ -182,7 +192,7 @@ export function PanelEkspor({
         <p className="flex items-start gap-2 text-[11px] text-slate-500">
           <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>
-            Berkas mengikuti template <FileSpreadsheet className="inline h-3 w-3" />{" "}
+            Berkas mengikuti template <IkonExcel className="inline h-3 w-3 text-excel-600" />{" "}
             <em>&ldquo;9 - Areal Terdampak dan IKSI&rdquo;</em>: merge header, penomoran kolom,
             format akuntansi, baris Total (luas dijumlah, skor dirata-rata), catatan kriteria, dan
             blok tanda tangan.

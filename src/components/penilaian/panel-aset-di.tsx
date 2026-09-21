@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { Boxes, ChevronDown, Info } from "lucide-react";
 
-import { JENIS_ASET, URUTAN_JENIS } from "@/lib/aset";
+import { JENIS_ASET, urutanJenis, letakAset, ruasAset } from "@/lib/aset";
 import type { JenisAset } from "@/lib/supabase/types";
 import { cn } from "@/lib/utils";
 
@@ -12,8 +12,16 @@ export interface AsetRingkas {
   id: number;
   nomenklatur: string | null;
   nama: string;
+  /** Nomor aset ASLI dari buku — nomor yang sama dengan berkas cetak petugas. */
   kode: string | null;
   desa: string | null;
+  kecamatan: string | null;
+  /** Khusus saluran: bangunan di hulu dan hilirnya, pembeda antar-ruas. */
+  bangunan_hulu: string | null;
+  bangunan_hilir: string | null;
+  /** Nama D.I. sebagaimana tertulis di buku, untuk memergoki salah tautan. */
+  nama_di_buku: string | null;
+  perlu_tinjau: boolean;
 }
 
 export interface KelompokAset {
@@ -22,12 +30,15 @@ export interface KelompokAset {
 }
 
 /**
- * Konteks aset milik satu D.I., ditampilkan di dalam form penilaian.
+ * Gambaran isi register aset milik satu D.I., ditampilkan di dalam form.
  *
- * IKSI menilai jaringan secara agregat — satu nilai untuk "Bendung", bukan satu
- * nilai per bendung. Panel ini menjawab pertanyaan yang wajar muncul saat
- * mengisi: "bendung yang mana yang sedang saya nilai?" Terutama penting bagi
- * D.I. yang punya lebih dari satu bangunan utama.
+ * Penilaiannya sendiri dikerjakan per bangunan di tab **Per Bangunan**; panel
+ * ini sekadar memperlihatkan apa saja yang terdaftar, supaya penilai tahu
+ * cakupan yang akan ia periksa sebelum mulai.
+ *
+ * Tiap baris memuat ruas hulu-hilir dan nomor aset aslinya, bukan nama saja:
+ * seluruh saluran di register bernama "Saluran Sekunder", jadi nama tidak
+ * membedakan apa pun.
  */
 export function PanelAsetDi({
   kelompok,
@@ -52,7 +63,7 @@ export function PanelAsetDi({
   }
 
   const urut = [...kelompok].sort(
-    (a, b) => URUTAN_JENIS.indexOf(a.jenis) - URUTAN_JENIS.indexOf(b.jenis),
+    (a, b) => urutanJenis(a.jenis) - urutanJenis(b.jenis),
   );
   const total = kelompok.reduce((a, k) => a + k.daftar.length, 0);
 
@@ -101,27 +112,41 @@ export function PanelAsetDi({
       </div>
 
       {terbuka ? (
-        <div className="scroll-halus mt-2.5 max-h-44 overflow-y-auto rounded-md border border-slate-200 bg-white">
+        <div className="scroll-halus mt-2.5 max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white">
           <ul className="divide-y divide-slate-100">
-            {(urut.find((k) => k.jenis === terbuka)?.daftar ?? []).map((a) => (
-              <li key={a.id} className="flex items-baseline gap-2 px-3 py-1.5 text-xs">
-                {a.nomenklatur ? (
-                  <code className="shrink-0 rounded bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-brand-700">
-                    {a.nomenklatur}
-                  </code>
-                ) : null}
-                <span className="min-w-0 flex-1 truncate text-slate-700">{a.nama}</span>
-                {a.desa ? <span className="shrink-0 text-slate-400">{a.desa}</span> : null}
-              </li>
-            ))}
+            {(urut.find((k) => k.jenis === terbuka)?.daftar ?? []).map((a) => {
+              const ruas = ruasAset(a);
+              const letak = letakAset(a);
+              return (
+                <li key={a.id} className="px-3 py-1.5 text-xs">
+                  <div className="flex items-baseline gap-2">
+                    {a.nomenklatur ? (
+                      <code className="shrink-0 rounded bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-brand-700">
+                        {a.nomenklatur}
+                      </code>
+                    ) : null}
+                    <span className="min-w-0 flex-1 truncate text-slate-700">{a.nama}</span>
+                    <span className="shrink-0 text-slate-400">{letak ?? "letak belum dicatat"}</span>
+                  </div>
+                  {/* Ruas dan nomor aset ditaruh di baris kedua: pada D.I. yang
+                      seluruh salurannya bernama "Saluran Sekunder", inilah yang
+                      membedakan satu ruas dari ruas berikutnya. */}
+                  {ruas || a.kode ? (
+                    <div className="mt-0.5 flex items-baseline gap-2 text-[10px] text-slate-400">
+                      {ruas ? <span className="min-w-0 truncate">{ruas}</span> : null}
+                      {a.kode ? <span className="ml-auto shrink-0 font-mono">{a.kode}</span> : null}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}
 
       <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-        Penilaian IKSI menilai <strong>kondisi jaringan secara keseluruhan</strong> — satu nilai
-        untuk tiap indikator, bukan satu nilai per bangunan. Daftar ini membantu memastikan seluruh
-        aset di atas sudah Anda pertimbangkan.
+        Bangunan dinilai satu per satu di tab <strong>Per Bangunan</strong>, lalu hasilnya
+        dirata-rata menjadi nilai indikator. Daftar ini sekadar gambaran isi register aset D.I. ini.
       </p>
     </div>
   );

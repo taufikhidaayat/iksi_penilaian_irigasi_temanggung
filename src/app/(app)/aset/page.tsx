@@ -66,7 +66,11 @@ export default async function HalamanAset({ searchParams }: PageProps<"/aset">) 
         <KartuStatistik
           label="Total Aset"
           nilai={formatAngka(ringkasan.total, 0)}
-          keterangan={`${ringkasan.perJenis.length} jenis aset`}
+          keterangan={
+            ringkasan.totalBaris === ringkasan.total
+              ? `${ringkasan.perJenis.length} jenis aset`
+              : `${ringkasan.perJenis.length} jenis aset · ${formatAngka(ringkasan.totalBaris, 0)} baris`
+          }
           ikon={Boxes}
         />
         <KartuStatistik
@@ -91,13 +95,33 @@ export default async function HalamanAset({ searchParams }: PageProps<"/aset">) 
         </KartuKepala>
         <KartuIsi>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+            {/*
+              Angka besar adalah jumlah ASET, yaitu identitas yang berbeda.
+              Jumlah baris tabel turun jadi keterangan dan hanya muncul ketika
+              berbeda: menampilkannya selalu hanya menambah angka yang sama dua
+              kali di tiap kotak, sedangkan selisihnya justru berarti ada baris
+              kembar yang perlu dirapikan.
+
+              Jumlah D.I. ikut ditampilkan supaya petugas yang terbiasa dengan
+              kerangka 577 D.I. langsung melihat hubungan kedua angka itu, dan
+              tidak menyangka 592 bendung sebagai salah hitung.
+            */}
             {ringkasan.perJenis.map((r) => (
               <div key={r.jenis} className="rounded-lg bg-slate-50 px-3 py-2.5">
                 <p className="text-lg font-semibold tabular-nums text-slate-900">
-                  {formatAngka(r.jumlah, 0)}
+                  {formatAngka(r.jumlahAset, 0)}
                 </p>
                 <p className="mt-0.5 text-[11px] leading-tight text-slate-500">
                   {JENIS_ASET[r.jenis].label}
+                </p>
+                <p className="mt-1 text-[11px] leading-tight text-slate-400 tabular-nums">
+                  {formatAngka(r.jumlahDi, 0)} D.I.
+                  {r.jumlahBaris !== r.jumlahAset ? (
+                    <span className="text-amber-600" title="Ada baris kembar yang perlu dirapikan">
+                      {" "}
+                      · {formatAngka(r.jumlahBaris, 0)} baris
+                    </span>
+                  ) : null}
                 </p>
               </div>
             ))}

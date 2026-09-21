@@ -18,7 +18,11 @@
     "buat-akun-upt": "node scripts/buat-akun-upt.mjs",
     "uji-halaman": "node scripts/uji-halaman.mjs",
     "e2e": "playwright test",
-    "impor-aset": "node scripts/impor-aset.mjs"
+    "impor-aset": "node scripts/impor-aset.mjs",
+    "impor-aset-draf": "node scripts/impor-aset-draf.mjs",
+    "impor-bendung-baru": "node scripts/impor-bendung-baru.mjs",
+    "ganti-aset-bendung": "node scripts/ganti-aset-bendung.mjs",
+    "tandai-aset-kembar": "node scripts/tandai-aset-kembar.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

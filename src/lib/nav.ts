@@ -16,6 +16,7 @@ export type KunciIkon =
   | "ekspor"
   | "daerahIrigasi"
   | "aset"
+  | "asetDraf"
   | "pengguna";
 
 export interface ItemNav {
@@ -35,6 +36,7 @@ export const MENU: ItemNav[] = [
   { href: "/ekspor", label: "Ekspor Excel", ikon: "ekspor" },
   { href: "/daerah-irigasi", label: "Daerah Irigasi", ikon: "daerahIrigasi" },
   { href: "/aset", label: "Aset Irigasi", ikon: "aset" },
+  { href: "/aset-draf", label: "Data Aset Draf IKSI", ikon: "asetDraf", adminSaja: true, prefix: true },
   { href: "/pengguna", label: "Pengguna", ikon: "pengguna", adminSaja: true },
 ];
 

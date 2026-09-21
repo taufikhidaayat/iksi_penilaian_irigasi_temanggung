@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { z } from "zod";
 
+import { nomorAset, type JenisAsetResmi, type WilayahAset } from "@/lib/aset";
 import { ambilSesi } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { JenisAset } from "@/lib/supabase/types";
@@ -30,7 +31,9 @@ const JENIS = [
   "tanah_lambiran_saluran",
   "tanah_tidak_tersedia_kib",
   "jalan_inspeksi",
-] as const;
+  // `satisfies` menolak jenis yang hanya ada di menu Aset Draf, mis.
+  // `bendung_baru`, supaya tidak pernah bisa tersimpan sebagai aset resmi.
+] as const satisfies readonly JenisAsetResmi[];
 
 const kosongJadiNull = (v: unknown) =>
   typeof v === "string" && v.trim() === "" ? null : typeof v === "string" ? v.trim() : v;
@@ -81,12 +84,29 @@ async function bolehAtasDi(diId: number | null): Promise<boolean> {
   return data?.upt_id === sesi.profil.upt_id;
 }
 
-function keBaris(m: z.output<typeof SkemaAset>) {
+/** UPT dan kode D.I. tujuan, untuk menyusun segmen wilayah pada nomor aset. */
+async function ambilWilayah(diId: number | null): Promise<WilayahAset | null> {
+  if (diId === null) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("daerah_irigasi")
+    .select("upt_id, kode")
+    .eq("id", diId)
+    .maybeSingle();
+  return data ? { uptId: data.upt_id, kodeDi: data.kode } : null;
+}
+
+function keBaris(m: z.output<typeof SkemaAset>, wilayah: WilayahAset | null) {
+  const jenis = m.jenis as JenisAset;
   return {
-    jenis: m.jenis as JenisAset,
+    jenis,
     nama: m.nama,
     nomenklatur: m.nomenklatur,
-    kode: m.kode ? m.kode.replace(/\s+/g, "") : null,
+    // Golongan dan wilayah ditegakkan di server, bukan diserahkan ke ketikan.
+    // Petugas menyalin nomor dari buku, yang selalu menulis `010306` bahkan
+    // untuk aset tanah dan tidak pernah memuat kode UPT; tanpa ini satu
+    // penyuntingan biasa diam-diam mengembalikan nomor ke format buku.
+    kode: nomorAset(m.kode ? m.kode.replace(/\s+/g, "") : null, jenis, wilayah),
     di_id: m.diId,
     desa: m.desa,
     kecamatan: m.kecamatan,
@@ -107,7 +127,7 @@ export async function simpanAset(id: number, muatan: MuatanAset): Promise<HasilA
   }
 
   const supabase = await createClient();
-  const baris = keBaris(parsed.data);
+  const baris = keBaris(parsed.data, await ambilWilayah(parsed.data.diId));
 
   const { error } = await supabase
     .from("aset")
@@ -138,7 +158,9 @@ export async function tambahAset(muatan: MuatanAset): Promise<HasilAset> {
 
   const supabase = await createClient();
   const { error } = await supabase.from("aset").insert({
-    ...keBaris(parsed.data),
+    ...keBaris(parsed.data, await ambilWilayah(parsed.data.diId)),
+    // Aset yang lahir di aplikasi tidak punya asal-usul di buku.
+    kode_buku: null,
     kode_di_buku: null,
     nama_di_buku: null,
     seksi_buku: null,

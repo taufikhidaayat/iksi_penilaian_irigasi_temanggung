@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { Input, Lencana, Pilihan, Tombol } from "@/components/ui";
 import type { BarisRekap } from "@/lib/data/rekap";
 import { INFO_KATEGORI_IKSI } from "@/lib/iksi/scoring";
-import { nadaKategori } from "@/lib/tampilan";
+import { BOBOT_PRASARANA_FISIK, nadaKategori, setaraPersen } from "@/lib/tampilan";
 import { cn, formatAngka } from "@/lib/utils";
 
 const PER_HALAMAN = 50;
@@ -91,7 +91,7 @@ export function TabelRekap({
       ) : null}
 
       <div className="scroll-halus overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full min-w-[1180px] border-collapse text-xs">
+        <table className="w-full min-w-[1280px] border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-slate-50">
             <tr>
               <th rowSpan={2} className="border border-slate-200 px-2 py-2 font-semibold text-slate-600">
@@ -112,7 +112,7 @@ export function TabelRekap({
                 Luas
                 <span className="block font-normal text-slate-400">(Ha)</span>
               </th>
-              <th colSpan={7} className="border border-slate-200 bg-brand-50/60 px-2 py-1.5 font-semibold text-brand-800">
+              <th colSpan={8} className="border border-slate-200 bg-brand-50/60 px-2 py-1.5 font-semibold text-brand-800">
                 Prasarana Fisik
               </th>
               <th colSpan={6} className="border border-slate-200 bg-emerald-50/60 px-2 py-1.5 font-semibold text-emerald-800">
@@ -136,6 +136,13 @@ export function TabelRekap({
                   <span className="block font-normal text-slate-400">Ha</span>
                 </th>
               ))}
+              {/* Kolom informasi: Prasarana Fisik pada skalanya sendiri.
+                  Tidak ikut dijumlahkan ke mana pun, hanya supaya kondisi
+                  bangunan bisa dibaca tanpa membagi 45 di kepala sendiri. */}
+              <th className="border border-slate-200 bg-brand-50/20 px-1.5 py-1.5 font-semibold">
+                Kondisi
+                <span className="block font-normal text-slate-400">skala 100</span>
+              </th>
               <th className="border border-slate-200 bg-brand-50/40 px-1.5 py-1.5 font-semibold">
                 Total
                 <span className="block font-normal text-slate-400">maks 45</span>
@@ -194,6 +201,9 @@ export function TabelRekap({
                   </td>
                 ))}
 
+                <td className="border border-slate-200 bg-brand-50/15 px-1.5 py-1.5 text-right tabular-nums text-slate-500">
+                  {sel(setaraPersen(b.skor.prasaranaFisik, BOBOT_PRASARANA_FISIK))}
+                </td>
                 <td className="border border-slate-200 bg-brand-50/30 px-1.5 py-1.5 text-right font-medium tabular-nums">
                   {sel(b.skor.prasaranaFisik)}
                 </td>
@@ -248,6 +258,9 @@ export function TabelRekap({
                   {sel(v)}
                 </td>
               ))}
+              <td className="border border-slate-300 px-1.5 py-2 text-right tabular-nums text-slate-500">
+                {sel(setaraPersen(total.skor.prasaranaFisik, BOBOT_PRASARANA_FISIK))}
+              </td>
               <td className="border border-slate-300 px-1.5 py-2 text-right tabular-nums">
                 {sel(total.skor.prasaranaFisik)}
               </td>
@@ -274,6 +287,12 @@ export function TabelRekap({
       <p className="mt-2 text-[11px] text-slate-500">
         Baris <strong>Total</strong> mengikuti template: kolom luas &amp; areal dijumlahkan,
         kolom nilai komponen <strong>dirata-ratakan</strong> atas D.I. yang sudah dinilai.
+      </p>
+      <p className="mt-1 text-[11px] text-slate-500">
+        Kolom <strong>Kondisi (skala 100)</strong> adalah nilai Prasarana Fisik pada skalanya
+        sendiri, yaitu Total dibagi {BOBOT_PRASARANA_FISIK} lalu dikali 100. Gunanya membaca
+        kondisi bangunan tanpa menghitung sendiri. Kolom ini <strong>tidak ikut dijumlahkan</strong>{" "}
+        ke nilai IKSI.
       </p>
 
       {ringkas ? (

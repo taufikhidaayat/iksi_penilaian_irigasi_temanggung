@@ -9,9 +9,15 @@ import { Centang, Input, Label, Pemuat, Pilihan, Tombol } from "@/components/ui"
 import { Dialog } from "@/components/ui/dialog";
 import { useKonfirmasi } from "@/components/ui/konfirmasi";
 import { useToast } from "@/components/ui/toast";
-import { JENIS_ASET, URUTAN_JENIS, sebutanAset, uraikanKode } from "@/lib/aset";
+import {
+  JENIS_ASET,
+  URUTAN_JENIS,
+  type JenisAsetResmi,
+  sebutanAset,
+  segmenGolongan,
+  uraikanKode,
+} from "@/lib/aset";
 import type { BarisAset } from "@/lib/data/aset";
-import type { JenisAset } from "@/lib/supabase/types";
 
 import { type MuatanAset, hapusAset, simpanAset, tambahAset } from "@/app/(app)/aset/actions";
 
@@ -43,7 +49,7 @@ export function DialogAset({
 
   const baru = aset === null;
   const [form, setForm] = useState<MuatanAset>(() => ({
-    jenis: (aset?.jenis ?? "bendung") as JenisAset,
+    jenis: (aset?.jenis ?? "bendung") as JenisAsetResmi,
     nama: aset?.nama ?? "",
     nomenklatur: aset?.nomenklatur ?? "",
     kode: aset?.kode ?? "",
@@ -60,7 +66,7 @@ export function DialogAset({
   const set = <K extends keyof MuatanAset>(k: K, v: MuatanAset[K]) =>
     setForm((s) => ({ ...s, [k]: v }));
 
-  const info = JENIS_ASET[form.jenis as JenisAset];
+  const info = JENIS_ASET[form.jenis as JenisAsetResmi];
   const uraian = useMemo(() => uraikanKode(String(form.kode ?? "")), [form.kode]);
   const adalahSaluran = form.jenis === "saluran";
 
@@ -126,7 +132,7 @@ export function DialogAset({
             <Pilihan
               id="a-jenis"
               value={form.jenis}
-              onChange={(e) => set("jenis", e.target.value as JenisAset)}
+              onChange={(e) => set("jenis", e.target.value as JenisAsetResmi)}
             >
               {URUTAN_JENIS.map((j) => (
                 <option key={j} value={j}>
@@ -166,9 +172,17 @@ export function DialogAset({
             id="a-kode"
             value={String(form.kode ?? "")}
             onChange={(e) => set("kode", e.target.value)}
-            placeholder="33.23.010306.0538.01001.2002"
+            // Contoh mengikuti jenis yang sedang dipilih, termasuk segmen
+            // golongannya, supaya bentuk yang diharapkan langsung terlihat.
+            placeholder={`33.23.${segmenGolongan(form.jenis as JenisAsetResmi)}.01538.${info.kodeTipe}001.2002`}
             className="font-mono text-sm"
           />
+          <p className="mt-1 text-[11px] text-slate-500">
+            Salin apa adanya dari Buku Aset Irigasi. Segmen golongan (
+            {segmenGolongan(form.jenis as JenisAsetResmi)} untuk {info.label.toLowerCase()}) dan segmen
+            UPT + nomor D.I. dipasang otomatis saat disimpan, jadi tidak perlu diketik sendiri.
+            Nomor ini tidak unik, jadi jangan dipakai sebagai satu-satunya pembeda antar bangunan.
+          </p>
           {uraian ? (
             <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
               {uraian.map((u, i) => (

@@ -22,6 +22,8 @@ export type JenisAset =
   | "terjunan"
   | "talang"
   | "gorong_gorong"
+  /** Hanya dipakai tabel draf: berkas GIS `SDY bendung Kab.dbf`. Lihat migrasi 0017. */
+  | "bendung_baru"
   | "tanah_saluran"
   | "bangunan_pengaman"
   | "tanah_rumah"
@@ -95,8 +97,24 @@ export type Penilaian = {
 export type PenilaianNilai = {
   penilaian_id: string;
   indikator_kode: string;
+  /** 0..100. Pecahan untuk indikator yang dirata-rata dari banyak bangunan. */
   nilai: number;
   keterangan: string | null;
+};
+
+/**
+ * Nilai kondisi satu indikator pada satu bangunan.
+ *
+ * Rata-ratanya disalin ke `penilaian_nilai` saat simpan, jadi mesin skoring,
+ * rekap, dan ekspor tidak perlu tahu tabel ini ada.
+ */
+export type PenilaianAsetNilai = {
+  penilaian_id: string;
+  aset_id: number;
+  indikator_kode: string;
+  nilai: number;
+  /** true bila nilainya datang dari pengisian massal, bukan diperiksa satuan. */
+  massal: boolean;
 };
 
 export type ArealTerdampak = {
@@ -115,8 +133,16 @@ export type Aset = {
   /** Nama lapangan, mis. "BNDG.0517". Kosong untuk aset tanah. */
   nomenklatur: string | null;
   nama: string;
-  /** Nomor aset spasial. TIDAK unik — buku sumber memuat kode berulang. */
+  /**
+   * Nomor aset berformat SIKSI, dan inilah yang ditampilkan:
+   * nomor buku dengan segmen golongan (ke-3) dan segmen wilayah (ke-4)
+   * dibetulkan — `33.23.010306.01287.01001.2002`.
+   *
+   * TIDAK unik — buku sumber memuat kode berulang.
+   */
   kode: string | null;
+  /** Nomor asli dari Buku Aset, sebelum golongan dan wilayah dipasang. */
+  kode_buku: string | null;
   di_id: number | null;
   kode_di_buku: string | null;
   nama_di_buku: string | null;
@@ -131,6 +157,32 @@ export type Aset = {
   catatan: string | null;
   created_at: string;
   updated_at: string;
+};
+
+/** Satu berkas draf: metadata kolom, dipakai untuk menyusun ulang saat ekspor. */
+export type AsetDrafBerkas = {
+  jenis: JenisAset;
+  nama_berkas: string;
+  nama_sheet: string;
+  /** Urutan nama kolom apa adanya di berkas asli. */
+  kolom: string[];
+  kolom_kode: string | null;
+  jumlah_baris: number;
+  diimpor_pada: string;
+};
+
+/** Satu baris draf. Kolomnya beda-beda tiap jenis, jadi disimpan di `data`. */
+export type AsetDraf = {
+  id: number;
+  jenis: JenisAset;
+  baris_ke: number;
+  /** Nomor berformat SIKSI, sama aturannya dengan `aset.kode`. Ditampilkan. */
+  kode: string | null;
+  /** Nomor asli apa adanya di berkas draf. */
+  kode_draf: string | null;
+  di_id: number | null;
+  data: Record<string, string | number | boolean | null>;
+  teks_cari: string;
 };
 
 type Tabel<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
@@ -154,16 +206,37 @@ export interface Database {
       daerah_irigasi: Tabel<DaerahIrigasi>;
       penilaian: Tabel<Penilaian, SisipPenilaian>;
       penilaian_nilai: Tabel<PenilaianNilai, PenilaianNilai>;
+      penilaian_aset_nilai: Tabel<PenilaianAsetNilai, PenilaianAsetNilai>;
       areal_terdampak: Tabel<ArealTerdampak, ArealTerdampak>;
       aset: Tabel<Aset, Omit<Aset, "id" | "created_at" | "updated_at">>;
+      aset_draf_berkas: Tabel<AsetDrafBerkas, AsetDrafBerkas>;
+      aset_draf: Tabel<AsetDraf, Omit<AsetDraf, "id">>;
     };
     Views: {
       ringkasan_aset: {
         Row: {
           jenis: JenisAset;
           upt_id: number | null;
+          /** Jumlah baris tabel. */
           jumlah: number;
           perlu_tinjau: number;
+          tanpa_di: number;
+          /** Identitas berbeda; lebih kecil dari `jumlah` bila ada baris kembar. */
+          jumlah_aset: number;
+          /** Berapa D.I. yang diwakili jenis ini. */
+          jumlah_di: number;
+        };
+        Relationships: [];
+      };
+      ringkasan_aset_draf: {
+        Row: {
+          jenis: JenisAset;
+          /** Jumlah baris di berkas draf. */
+          jumlah: number;
+          /** Identitas berbeda; sama dengan `jumlah` selama tidak ada baris kembar. */
+          jumlah_aset: number;
+          /** Berapa D.I. yang diwakili jenis ini. */
+          jumlah_di: number;
           tanpa_di: number;
         };
         Relationships: [];

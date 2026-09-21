@@ -1,31 +1,45 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 
-import { ChevronRight, Eye, EyeOff, Lock, User } from "lucide-react";
+import { AlertCircle, ChevronRight, Eye, EyeOff, Lock, User } from "lucide-react";
 
 import { Input, Label, Pemuat, Tombol } from "@/components/ui";
-import { useToast } from "@/components/ui/toast";
 
 import { type StatusMasuk, masuk } from "./actions";
 
 export function FormMasuk({ lanjut }: { lanjut?: string }) {
   const [status, aksi, sedangKirim] = useActionState<StatusMasuk, FormData>(masuk, {});
   const [lihatSandi, setLihatSandi] = useState(false);
-  const { galat } = useToast();
 
-  useEffect(() => {
-    // Bergantung pada `status`, bukan `status.error`: setiap submit gagal
-    // menghasilkan objek status baru dari server action, walau pesannya
-    // sama persis dengan sebelumnya (mis. salah dua kali berturut-turut).
-    // Bila effect bergantung pada string pesannya saja, React menganggap
-    // nilainya "tidak berubah" dan toast kedua tidak pernah tampil.
-    if (status.error) galat(status.error);
-  }, [status, galat]);
+  /**
+   * Username dikendalikan state supaya tidak ikut terhapus saat login gagal.
+   *
+   * React mengosongkan field tak terkendali setiap kali sebuah form action
+   * selesai. Akibatnya salah ketik satu huruf pada kata sandi memaksa petugas
+   * mengetik ulang usernamenya juga. Kata sandi sengaja dibiarkan terhapus.
+   */
+  const [username, setUsername] = useState("");
 
   return (
     <form action={aksi} className="space-y-4" noValidate>
       {lanjut ? <input type="hidden" name="lanjut" value={lanjut} /> : null}
+
+      {/* Galat ditulis DI DALAM form, bukan sebagai toast.
+          Sebelumnya satu-satunya tanda kata sandi salah adalah toast yang
+          hilang sendiri dalam beberapa detik. Petugas yang sedang mengetik,
+          atau yang menengok layar sesaat setelahnya, melihat form yang
+          seolah-olah tidak bereaksi sama sekali saat tombol ditekan — dan
+          tidak punya cara lain untuk tahu apa yang salah. */}
+      {status.error ? (
+        <p
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs leading-relaxed text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+        >
+          <AlertCircle className="mt-px h-4 w-4 shrink-0" aria-hidden />
+          {status.error}
+        </p>
+      ) : null}
 
       <div>
         <Label htmlFor="username">Username</Label>
@@ -43,6 +57,8 @@ export function FormMasuk({ lanjut }: { lanjut?: string }) {
             spellCheck={false}
             placeholder="mis. upt.ngadirejo"
             className="pl-9"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             aria-invalid={Boolean(status.bidang?.username)}
             aria-describedby={status.bidang?.username ? "galat-username" : undefined}
             required

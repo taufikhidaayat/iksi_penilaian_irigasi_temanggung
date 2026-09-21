@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { ArrowRight, CheckCircle2, ClipboardList, Gauge, MapPin } from "lucide-react";
+import { ArrowRight, CheckCircle2, ChevronRight, ClipboardList, Gauge, MapPin } from "lucide-react";
 
 import { GrafikKategori } from "@/components/dasbor/grafik-kategori";
 import { GrafikUpt } from "@/components/dasbor/grafik-upt";
@@ -8,6 +8,7 @@ import { KartuStatistik } from "@/components/dasbor/kartu-statistik";
 import { FilterPeriode } from "@/components/layout/filter-periode";
 import { KepalaHalaman } from "@/components/layout/kepala-halaman";
 import { BilahProgres, Kartu, KartuIsi, KartuJudul, KartuKepala, Lencana } from "@/components/ui";
+import { BarisTabel } from "@/components/ui/baris-tabel";
 import { ambilSesi } from "@/lib/auth";
 import { ambilRingkasan } from "@/lib/data/ringkasan";
 import { INFO_KATEGORI_IKSI, kategoriIksi } from "@/lib/iksi/scoring";
@@ -22,6 +23,11 @@ export default async function HalamanDasbor({ searchParams }: PageProps<"/">) {
 
   const r = await ambilRingkasan(tahun, triwulan, sesi.isAdmin ? null : sesi.profil.upt_id);
   const persenSelesai = r.jumlahDi > 0 ? (r.selesai / r.jumlahDi) * 100 : 0;
+
+  const periode = { tahun: String(tahun), triwulan };
+  /** Rekapitulasi pada periode yang sama, disaring ke satu UPT. */
+  const tautanRekap = (uptId: number) =>
+    `/rekap?${new URLSearchParams({ ...periode, upt: String(uptId) })}`;
 
   return (
     <>
@@ -122,7 +128,7 @@ export default async function HalamanDasbor({ searchParams }: PageProps<"/">) {
         <KartuKepala className="flex items-center justify-between">
           <KartuJudul>Progres Pengisian per UPT</KartuJudul>
           <Link
-            href="/rekap"
+            href={`/rekap?${new URLSearchParams(periode)}`}
             className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 dark:bg-brand-500/15 dark:text-brand-200 dark:hover:bg-brand-500/25"
           >
             Lihat rekapitulasi
@@ -130,7 +136,7 @@ export default async function HalamanDasbor({ searchParams }: PageProps<"/">) {
           </Link>
         </KartuKepala>
         <div className="scroll-halus overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[680px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
                 <th className="px-5 py-3 font-medium">UPT Regional</th>
@@ -139,6 +145,7 @@ export default async function HalamanDasbor({ searchParams }: PageProps<"/">) {
                 <th className="px-5 py-3 font-medium">Progres</th>
                 <th className="px-5 py-3 text-right font-medium">Rata-rata IKSI</th>
                 <th className="px-5 py-3 font-medium">Kategori</th>
+                <th className="w-10" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -146,8 +153,19 @@ export default async function HalamanDasbor({ searchParams }: PageProps<"/">) {
                 const persen = u.jumlahDi > 0 ? (u.selesai / u.jumlahDi) * 100 : 0;
                 const kat = u.rataIksi === null ? null : kategoriIksi(u.rataIksi);
                 return (
-                  <tr key={u.uptId} className="hover:bg-slate-50/60">
-                    <td className="px-5 py-3 font-medium text-slate-800">{u.nama}</td>
+                  <BarisTabel
+                    key={u.uptId}
+                    href={tautanRekap(u.uptId)}
+                    className="hover:bg-slate-50/60"
+                  >
+                    <td className="px-5 py-3 font-medium text-slate-800">
+                      <Link
+                        href={tautanRekap(u.uptId)}
+                        className="block group-hover:text-brand-700"
+                      >
+                        {u.nama}
+                      </Link>
+                    </td>
                     <td className="px-5 py-3 text-right tabular-nums text-slate-600">
                       {u.jumlahDi}
                     </td>
@@ -172,7 +190,17 @@ export default async function HalamanDasbor({ searchParams }: PageProps<"/">) {
                         <span className="text-xs text-slate-400">–</span>
                       )}
                     </td>
-                  </tr>
+
+                    <td className="pr-4">
+                      <Link
+                        href={tautanRekap(u.uptId)}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600"
+                        aria-label={`Lihat rekapitulasi ${u.nama}`}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Link>
+                    </td>
+                  </BarisTabel>
                 );
               })}
             </tbody>

@@ -127,6 +127,7 @@ const RUTE = [
   ["/rekap", "Rekapitulasi"],
   ["/ekspor", "Ekspor"],
   ["/daerah-irigasi", "Daerah Irigasi"],
+  ["/aset", "Aset Irigasi"],
 ];
 
 console.log(`\nMenguji render halaman di ${ASAL}\n`);
@@ -135,7 +136,15 @@ try {
   /* --------------------------------------------------------- admin */
   console.log("Sebagai Administrator");
   const ckAdmin = await masuk("admin", "IksiAdmin#2026");
-  for (const [jalur, judul] of [...RUTE, ["/pengguna", "Pengguna"]]) {
+  for (const [jalur, judul] of [
+    ...RUTE,
+    ["/pengguna", "Pengguna"],
+    ["/aset-draf", "Data Aset Draf IKSI"],
+    // Halaman draf terlebar: 62 kolom, semuanya dirender sekaligus. Yang
+    // diperiksa nama kolom terjauh, bukan judul halaman — hanya itu yang
+    // membuktikan seluruh tabel ikut terender, bukan cuma kepalanya.
+    ["/aset-draf/bendung_baru", "type_bdgng"],
+  ]) {
     const html = await ambil(jalur, ckAdmin, "admin");
     if (html && html.includes(judul)) ok(`admin    ${jalur.padEnd(18)} memuat "${judul}"`);
     else if (html) no(`admin    ${jalur.padEnd(18)} render tapi tanpa teks "${judul}"`);
@@ -154,6 +163,29 @@ try {
     no(`admin    /api/ekspor        HTTP ${resXlsx.status}, tipe "${tipe}"`);
   }
 
+  // Ekspor draf menyusun ulang .xlsx dari database.
+  const resDraf = await fetch(`${ASAL}/api/aset-draf/talang`, { headers: { cookie: ckAdmin } });
+  const tipeDraf = resDraf.headers.get("content-type") ?? "";
+  const bufDraf = Buffer.from(await resDraf.arrayBuffer());
+  if (
+    resDraf.status === 200 &&
+    tipeDraf.includes("spreadsheetml") &&
+    bufDraf.subarray(0, 2).toString() === "PK"
+  ) {
+    ok(`admin    /api/aset-draf     .xlsx ${(bufDraf.length / 1024).toFixed(0)} KB`);
+  } else {
+    no(`admin    /api/aset-draf     HTTP ${resDraf.status}, tipe "${tipeDraf}"`);
+  }
+
+  // Berkas asli dikirim apa adanya dari data/aset-draf/.
+  const resAsli = await fetch(`${ASAL}/api/aset-draf/talang?asli=1`, { headers: { cookie: ckAdmin } });
+  const bufAsli = Buffer.from(await resAsli.arrayBuffer());
+  if (resAsli.status === 200 && bufAsli.subarray(0, 2).toString() === "PK") {
+    ok(`admin    /api/aset-draf?asli .xlsx ${(bufAsli.length / 1024).toFixed(0)} KB`);
+  } else {
+    no(`admin    /api/aset-draf?asli HTTP ${resAsli.status}`);
+  }
+
   /* ----------------------------------------------------------- upt */
   console.log("\nSebagai Petugas UPT (Ngadirejo)");
   const ckUpt = await masuk("upt.ngadirejo", "UptIksi#2026");
@@ -164,9 +196,17 @@ try {
   }
 
   // Halaman khusus admin harus menolak petugas UPT.
-  const res = await fetch(ASAL + "/pengguna", { headers: { cookie: ckUpt }, redirect: "manual" });
-  if (res.status === 307 || res.status === 302) ok("upt      /pengguna          ditolak, dialihkan (benar)");
-  else no(`upt      /pengguna          HTTP ${res.status}, seharusnya dialihkan`);
+  for (const jalur of ["/pengguna", "/aset-draf", "/aset-draf/bendung_baru"]) {
+    const res = await fetch(ASAL + jalur, { headers: { cookie: ckUpt }, redirect: "manual" });
+    if (res.status === 307 || res.status === 302) ok(`upt      ${jalur.padEnd(18)} ditolak, dialihkan (benar)`);
+    else no(`upt      ${jalur.padEnd(18)} HTTP ${res.status}, seharusnya dialihkan`);
+  }
+
+  // Route ekspor draf punya pemeriksaan sendiri: ia membaca berkas dari disk,
+  // yang tidak tersentuh RLS.
+  const resTolak = await fetch(`${ASAL}/api/aset-draf/talang`, { headers: { cookie: ckUpt } });
+  if (resTolak.status === 403) ok("upt      /api/aset-draf     ditolak 403 (benar)");
+  else no(`upt      /api/aset-draf     HTTP ${resTolak.status}, seharusnya 403`);
 
   /* ------------------------------------------------- form penilaian */
   // Halaman terbesar (158 indikator) — butuh satu penilaian yang benar-benar ada.

@@ -9,6 +9,7 @@ import {
   BarChart3,
   Boxes,
   FileDown,
+  FileStack,
   FileSpreadsheet,
   LayoutDashboard,
   LogOut,
@@ -35,6 +36,7 @@ const IKON: Record<KunciIkon, LucideIcon> = {
   ekspor: FileDown,
   daerahIrigasi: MapPin,
   aset: Boxes,
+  asetDraf: FileStack,
   pengguna: Users,
 };
 

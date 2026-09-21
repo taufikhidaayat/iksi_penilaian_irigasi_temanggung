@@ -6,7 +6,7 @@ import { useEffect, useState, useTransition } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Pencil, Plus, Search } from "lucide-react";
 
 import { Input, KosongData, Lencana, Pilihan, Tombol } from "@/components/ui";
-import { JENIS_ASET, URUTAN_JENIS } from "@/lib/aset";
+import { JENIS_ASET, URUTAN_JENIS, namaDiBerbeda, ruasAset } from "@/lib/aset";
 import type { BarisAset } from "@/lib/data/aset";
 import type { JenisAset } from "@/lib/supabase/types";
 import { cn } from "@/lib/utils";
@@ -181,6 +181,14 @@ export function TabelAset({
                           <span className="mt-0.5 block text-[11px] text-slate-400">
                             {a.uptNama ?? "—"}
                           </span>
+                          {/* Penautan dibuat dari kode pada nomor aset, tanpa
+                              pernah mencocokkan nama. Nama buku yang berbeda
+                              karena itu ditampilkan, bukan disembunyikan. */}
+                          {namaDiBerbeda(a.nama_di_buku, a.diNama) ? (
+                            <span className="mt-0.5 block text-[11px] text-amber-700">
+                              di buku: {a.nama_di_buku}
+                            </span>
+                          ) : null}
                         </>
                       ) : (
                         <span className="text-xs text-amber-700">
@@ -190,9 +198,20 @@ export function TabelAset({
                     </td>
 
                     <td className="px-4 py-2.5 text-xs text-slate-600">
-                      {a.desa ?? "–"}
-                      {a.kecamatan ? (
-                        <span className="block text-slate-400">{a.kecamatan}</span>
+                      {a.desa || a.kecamatan ? (
+                        <>
+                          {a.desa ?? "–"}
+                          {a.kecamatan ? (
+                            <span className="block text-slate-400">{a.kecamatan}</span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="text-amber-700 italic">belum dicatat</span>
+                      )}
+                      {ruasAset(a) ? (
+                        <span className="mt-0.5 block text-[11px] text-slate-400">
+                          {ruasAset(a)}
+                        </span>
                       ) : null}
                     </td>
 

@@ -29,6 +29,15 @@
   --color-kat-k:  #d97706;
   --color-kat-j:  #e11d48;
 
+  /* Hijau Microsoft Excel. Khusus tombol yang benar-benar menghasilkan berkas
+     .xlsx, jadi warnanya berfungsi sebagai janji "ini menghasilkan berkas" —
+     bukan sekadar hiasan. Tombol yang cuma berpindah halaman tetap biru.
+     --excel-600 dipakai sebagai latar; teks putih di atasnya lolos WCAG AA. */
+  --color-excel-50:  #e8f5ee;
+  --color-excel-600: #107c41;
+  --color-excel-700: #0e6c39;
+  --color-excel-800: #0b5a2f;
+
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
   --radius-card: 0.875rem;

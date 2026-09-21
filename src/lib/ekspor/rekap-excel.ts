@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 
 import type { RekapPeriode } from "@/lib/data/rekap";
+import { BOBOT_PRASARANA_FISIK } from "@/lib/tampilan";
 
 /**
  * Membangun berkas Excel rekapitulasi yang mereplikasi template
@@ -25,11 +26,25 @@ const FMT_AKUNTANSI = '_-* #,##0.00_-;-* #,##0.00_-;_-* "-"_-;_-@_-';
 const FMT_LUAS = "0.00";
 const FMT_NO = "0";
 
+/**
+ * Lebar kolom.
+ *
+ * Diambil dari template, lalu digeser satu kolom mulai dari M karena kolom
+ * "Prasarana Fisik setara 100%" disisipkan di situ. Lihat catatan tentang
+ * penyisipan kolom di bawah.
+ */
 const LEBAR: Record<string, number> = {
   A: 2.89, B: 4.55, C: 4.44, D: 25.11, E: 14.66, F: 17, G: 13.33,
-  H: 11.89, I: 12.33, J: 12.33, K: 12.33, L: 12.33, M: 18.44,
-  N: 14.89, O: 12.33, P: 13, Q: 14.89, R: 17.66, S: 12.55, T: 4.33,
+  H: 11.89, I: 12.33, J: 12.33, K: 12.33, L: 12.33,
+  M: 13.5, // sisipan: Prasarana Fisik setara 100%
+  N: 18.44, O: 14.89, P: 12.33, Q: 13, R: 14.89, S: 17.66, T: 12.55, U: 4.33,
 };
+
+/**
+ * Kolom terakhir yang dipakai tabel. Dulu 19 (S), kini 20 (T) setelah sisipan.
+ * Dipakai seluruh perulangan pembingkaian supaya tidak ada yang terlewat.
+ */
+const KOLOM_AKHIR = 20;
 
 const GARIS_TIPIS: Partial<ExcelJS.Borders> = {
   top: { style: "thin" },
@@ -103,8 +118,10 @@ export async function bangunRekapExcel(
   ws.mergeCells("B6:B8");
   ws.mergeCells("C6:D8");
   ws.mergeCells("F6:F8");
-  ws.mergeCells("G6:M6");
-  ws.mergeCells("N6:S6");
+  // Sisipan kolom M ikut masuk kelompok "Prasarana Fisik", jadi merge-nya
+  // melebar satu kolom; kelompok kanan bergeser penuh satu kolom.
+  ws.mergeCells("G6:N6");
+  ws.mergeCells("O6:T6");
   for (const k of ["G", "H", "I", "J", "K", "L"]) ws.mergeCells(`${k}7:${k}8`);
 
   ws.getCell("B6").value = "No.";
@@ -112,7 +129,7 @@ export async function bangunRekapExcel(
   ws.getCell("E7").value = "Tahun";
   ws.getCell("F6").value = "Luas Daerah Irigasi Sesuai Permen 14/2015 (Ha)";
   ws.getCell("G6").value = "Prasarana Fisik";
-  ws.getCell("N6").value = "Indeks Kondisi Sistem Irigasi (%)";
+  ws.getCell("O6").value = "Indeks Kondisi Sistem Irigasi (%)";
 
   const SUB: [string, string][] = [
     ["G7", "Bangunan Utama"],
@@ -121,24 +138,26 @@ export async function bangunRekapExcel(
     ["J7", "Saluran Pembuang dan Bangunannya"],
     ["K7", "Jalan Masuk/Inspeksi"],
     ["L7", "Kantor Perumahan dan Gudang"],
-    ["M7", "Total Prasarana Fisik"],
-    ["N7", "Produktivitas"],
-    ["O7", "Sarana Penujang"],
-    ["P7", "Organisasi Personalia"],
-    ["Q7", "Dokumentasi"],
-    ["R7", "P3A/GP3A/IP3A"],
-    ["S7", "Jumlah"],
+    ["M7", "Kondisi Prasarana Fisik"],
+    ["N7", "Total Prasarana Fisik"],
+    ["O7", "Produktivitas"],
+    ["P7", "Sarana Penujang"],
+    ["Q7", "Organisasi Personalia"],
+    ["R7", "Dokumentasi"],
+    ["S7", "P3A/GP3A/IP3A"],
+    ["T7", "Jumlah"],
   ];
   for (const [sel, teks] of SUB) ws.getCell(sel).value = teks;
 
   const MAKS: [string, string][] = [
-    ["M8", "Nilai Maks 45%"],
-    ["N8", "Nilai Maks 15%"],
-    ["O8", "Nilai Maks 10%"],
-    ["P8", "Nilai Maks 15%"],
-    ["Q8", "Nilai Maks 5%"],
-    ["R8", "Nilai Maks 10%"],
-    ["S8", "Nilai Maks 100%"],
+    ["M8", "Skala 100% (informasi)"],
+    ["N8", "Nilai Maks 45%"],
+    ["O8", "Nilai Maks 15%"],
+    ["P8", "Nilai Maks 10%"],
+    ["Q8", "Nilai Maks 15%"],
+    ["R8", "Nilai Maks 5%"],
+    ["S8", "Nilai Maks 10%"],
+    ["T8", "Nilai Maks 100%"],
   ];
   for (const [sel, teks] of MAKS) ws.getCell(sel).value = teks;
 
@@ -147,7 +166,7 @@ export async function bangunRekapExcel(
   ws.getRow(8).height = 33.6;
 
   for (const baris of [6, 7, 8]) {
-    for (let c = 2; c <= 19; c++) {
+    for (let c = 2; c <= KOLOM_AKHIR; c++) {
       const sel = ws.getRow(baris).getCell(c);
       sel.font = { bold: true, size: 11 };
       sel.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
@@ -158,9 +177,14 @@ export async function bangunRekapExcel(
   /* ------------------------------------------- baris 9: nomor kolom */
 
   // Penomoran mengikuti template apa adanya — kolom 10 memang dilewati di sumber.
+  //
+  // Kolom sisipan (13 = M) sengaja TIDAK diberi nomor: nomor-nomor ini dirujuk
+  // teks catatan di bawah tabel ("Kolom 9-15", "Kolom 4-8"). Memberi nomor pada
+  // sisipan akan menggeser seluruh rujukan itu dan membuat catatannya salah.
+  // Sel-nya tetap dibingkai supaya tabelnya tidak bolong.
   const NOMOR: [number, number][] = [
     [2, 1], [3, 2], [6, 3], [7, 4], [8, 5], [9, 6], [10, 7], [11, 8],
-    [12, 9], [13, 11], [14, 12], [15, 13], [16, 14], [17, 15], [18, 16], [19, 17],
+    [12, 9], [14, 11], [15, 12], [16, 13], [17, 14], [18, 15], [19, 16], [20, 17],
   ];
   ws.mergeCells("C9:D9");
   for (const [kol, nomor] of NOMOR) {
@@ -171,7 +195,7 @@ export async function bangunRekapExcel(
     sel.numFmt = FMT_NO;
     sel.border = GARIS_TIPIS;
   }
-  for (const kol of [4, 5]) {
+  for (const kol of [4, 5, 13]) {
     ws.getRow(9).getCell(kol).border = GARIS_TIPIS;
   }
   ws.getRow(9).height = 15;
@@ -197,18 +221,29 @@ export async function bangunRekapExcel(
     r.getCell(11).value = b.areal.jalanInspeksi;
     r.getCell(12).value = b.areal.kantorPerumahanGudang;
 
-    r.getCell(13).value = b.skor.prasaranaFisik;
-    r.getCell(14).value = b.skor.produktivitas;
-    r.getCell(15).value = b.skor.saranaPenunjang;
-    r.getCell(16).value = b.skor.organisasi;
-    r.getCell(17).value = b.skor.dokumentasi;
-    r.getCell(18).value = b.skor.p3a;
+    const nomorBaris = BARIS_AWAL + i;
+
+    // Kolom sisipan: Prasarana Fisik pada skalanya sendiri (0..100), bukan
+    // sumbangannya ke total. Ditulis sebagai formula supaya tetap ikut berubah
+    // bila kolom N diedit tangan, dan supaya terlihat jelas bahwa ini angka
+    // turunan, bukan data baru.
+    r.getCell(13).value =
+      b.skor.prasaranaFisik === null
+        ? null
+        : { formula: `IF(N${nomorBaris}="","",N${nomorBaris}/${BOBOT_PRASARANA_FISIK}*100)` };
+
+    r.getCell(14).value = b.skor.prasaranaFisik;
+    r.getCell(15).value = b.skor.produktivitas;
+    r.getCell(16).value = b.skor.saranaPenunjang;
+    r.getCell(17).value = b.skor.organisasi;
+    r.getCell(18).value = b.skor.dokumentasi;
+    r.getCell(19).value = b.skor.p3a;
 
     // Jumlah ditulis sebagai formula agar berkas tetap "hidup" saat diedit.
-    const nomorBaris = BARIS_AWAL + i;
-    r.getCell(19).value = { formula: `SUM(M${nomorBaris}:R${nomorBaris})` };
+    // Kolom M sengaja DI LUAR rentang: angkanya cuma tampilan, tidak dijumlahkan.
+    r.getCell(20).value = { formula: `SUM(N${nomorBaris}:S${nomorBaris})` };
 
-    for (let c = 2; c <= 19; c++) {
+    for (let c = 2; c <= KOLOM_AKHIR; c++) {
       const sel = r.getCell(c);
       sel.border = GARIS_DATA;
       sel.font = { size: 11 };
@@ -238,17 +273,17 @@ export async function bangunRekapExcel(
         formula: `SUM(${kol}${BARIS_AWAL}:${kol}${akhirData})`,
       };
     }
-    for (const kol of ["M", "N", "O", "P", "Q", "R"]) {
+    for (const kol of ["M", "N", "O", "P", "Q", "R", "S"]) {
       ws.getCell(`${kol}${barisTotal}`).value = {
         formula: `IF(COUNT(${kol}${BARIS_AWAL}:${kol}${akhirData})=0,0,AVERAGE(${kol}${BARIS_AWAL}:${kol}${akhirData}))`,
       };
     }
-    ws.getCell(`S${barisTotal}`).value = {
-      formula: `SUM(M${barisTotal}:R${barisTotal})`,
+    ws.getCell(`T${barisTotal}`).value = {
+      formula: `SUM(N${barisTotal}:S${barisTotal})`,
     };
   }
 
-  for (let c = 2; c <= 19; c++) {
+  for (let c = 2; c <= KOLOM_AKHIR; c++) {
     const sel = rT.getCell(c);
     sel.font = { bold: true, size: 11 };
     sel.alignment = { horizontal: "center", vertical: "middle" };
@@ -316,9 +351,9 @@ export async function bangunRekapExcel(
 
   barisTtd.forEach((teks, i) => {
     const nomorBaris = awalTtd + i;
-    ws.mergeCells(`Q${nomorBaris}:S${nomorBaris}`);
+    ws.mergeCells(`R${nomorBaris}:T${nomorBaris}`);
     if (teks === null) return;
-    const sel = ws.getCell(`Q${nomorBaris}`);
+    const sel = ws.getCell(`R${nomorBaris}`);
     sel.value = teks;
     sel.alignment = { horizontal: "center", vertical: "middle" };
     // Nama penanda tangan digarisbawahi seperti pada template.

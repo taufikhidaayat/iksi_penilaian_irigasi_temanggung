@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AlertTriangle,
+  Boxes,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -18,8 +19,16 @@ import {
 } from "lucide-react";
 
 import { BilahProgres, Kartu, KartuIsi, KartuJudul, KartuKepala, Lencana, Pilihan, Tombol } from "@/components/ui";
+import { JENIS_ASET } from "@/lib/aset";
 import { useKonfirmasi } from "@/components/ui/konfirmasi";
 import { useToast } from "@/components/ui/toast";
+import {
+  gabungNilai,
+  indikatorUntukAset,
+  statistikPengisian,
+  type BarisNilaiAset,
+  type BarisNilaiAsetTerisi,
+} from "@/lib/iksi/per-bangunan";
 import {
   ANAK_BY_PARENT,
   INDIKATOR_INPUT,
@@ -37,15 +46,41 @@ import { cn, formatAngka } from "@/lib/utils";
 
 import { PanelAreal, type NilaiAreal } from "./panel-areal";
 import { PanelAsetDi, type KelompokAset } from "./panel-aset-di";
+import { PanelPerBangunan, kunciSel, type PetaNilaiAset } from "./panel-per-bangunan";
 import { PohonIndikator } from "./pohon-indikator";
 
 type Simpanan = { ok: boolean; pesan?: string };
 
-/** Urutan perpindahan tab: lima komponen IKSI, lalu areal terdampak. */
-const URUTAN_TAB: string[] = [...KOMPONEN_UTAMA.map((k) => k.kode), "areal"];
+/** Tab khusus penilaian per bangunan, disisipkan tepat setelah Komponen I. */
+const TAB_BANGUNAN = "bangunan";
+
+/**
+ * Ambang cakupan bangunan tuntas. Di bawah ini, Ajukan tetap boleh jalan tapi
+ * memperingatkan lebih dulu.
+ *
+ * Alasannya: skor dihitung per indikator, bukan per bangunan — begitu SATU
+ * bangunan saja punya nilai untuk suatu indikator, indikator itu sudah
+ * dianggap "terisi" secara sistem, walau bangunan lain belum tersentuh. Tanpa
+ * peringatan ini, penilaian dengan data amat tipis bisa lolos diajukan tanpa
+ * siapa pun sadar.
+ */
+const AMBANG_CAKUPAN_RENDAH = 0.5;
+
+/**
+ * Urutan perpindahan tab.
+ *
+ * "Per Bangunan" duduk tepat setelah Prasarana Fisik karena isinya memang
+ * bagian dari komponen itu, cuma diisi dengan cara yang berbeda.
+ */
+const URUTAN_TAB: string[] = (() => {
+  const kode = KOMPONEN_UTAMA.map((k) => k.kode);
+  const i = kode.indexOf("I");
+  return [...kode.slice(0, i + 1), TAB_BANGUNAN, ...kode.slice(i + 1), "areal"];
+})();
 
 function labelTab(kode: string): string {
   if (kode === "areal") return "Areal Terdampak";
+  if (kode === TAB_BANGUNAN) return "Per Bangunan";
   const node = NODE_BY_KODE.get(kode);
   return node ? `${node.nomor}. ${node.label}` : kode;
 }
@@ -56,6 +91,8 @@ export interface FormPenilaianProps {
   namaUpt: string;
   nilaiAwal: NilaiInput;
   keteranganAwal: Record<string, string>;
+  /** Nilai per bangunan yang sudah tersimpan. */
+  nilaiAsetAwal: BarisNilaiAset[];
   arealAwal: ArealTerdampak | null;
   bisaEdit: boolean;
   /** Menampilkan tombol verifikasi saat penilaian berstatus "diajukan". */
@@ -70,6 +107,12 @@ export interface FormPenilaianProps {
     catatan: string | null;
     nilai: Record<string, number | null>;
     keterangan: Record<string, string>;
+    /**
+     * Sengaja boleh `undefined`: artinya "jangan sentuh nilai per bangunan
+     * yang sudah tersimpan". Dipakai supaya autosave biasa tidak perlu
+     * mengirim ribuan baris tiap dua detik.
+     */
+    nilaiAset?: BarisNilaiAsetTerisi[];
     areal: NilaiAreal | null;
   }) => Promise<Simpanan>;
   onAjukan: () => Promise<Simpanan>;
@@ -123,6 +166,23 @@ export function FormPenilaian(props: FormPenilaianProps) {
 
   const [nilai, setNilai] = useState<NilaiInput>(props.nilaiAwal);
   const [keterangan, setKeterangan] = useState<Record<string, string>>(props.keteranganAwal);
+
+  const [nilaiAset, setNilaiAset] = useState<PetaNilaiAset>(() => {
+    const peta: PetaNilaiAset = {};
+    for (const b of props.nilaiAsetAwal) {
+      if (b.nilai === null) continue;
+      peta[kunciSel(b.asetId, b.indikatorKode)] = {
+        nilai: b.nilai,
+        massal: b.massal ?? false,
+      };
+    }
+    return peta;
+  });
+
+  // Nilai per bangunan hanya ikut terkirim bila memang berubah. Satu D.I. bisa
+  // punya 5.197 baris, dan mengirimkannya tiap dua detik untuk perubahan yang
+  // tidak menyentuhnya sama sekali itu pemborosan yang terasa di lapangan.
+  const [asetKotor, setAsetKotor] = useState(false);
   const [kantongLumpur, setKantongLumpur] = useState<KantongLumpur>(penilaian.kantong_lumpur);
   const [jumlahP3a, setJumlahP3a] = useState<string>(penilaian.jumlah_p3a?.toString() ?? "");
   const [jumlahGp3a, setJumlahGp3a] = useState<string>(penilaian.jumlah_gp3a?.toString() ?? "");
@@ -149,18 +209,92 @@ export function FormPenilaian(props: FormPenilaianProps) {
   const [pesan, setPesan] = useState<{ jenis: "ok" | "galat"; teks: string } | null>(null);
   const [kotor, setKotor] = useState(false);
 
-  const skor = useMemo(() => hitungSkor(nilai, kantongLumpur), [nilai, kantongLumpur]);
+  /** Bentuk datar nilai per bangunan, sesuai yang diminta mesin rata-rata. */
+  const barisAset = useMemo<BarisNilaiAsetTerisi[]>(
+    () =>
+      Object.entries(nilaiAset).map(([kunci, sel]) => {
+        const pisah = kunci.indexOf(":");
+        return {
+          asetId: Number(kunci.slice(0, pisah)),
+          indikatorKode: kunci.slice(pisah + 1),
+          nilai: sel.nilai,
+          massal: sel.massal,
+        };
+      }),
+    [nilaiAset],
+  );
+
+  // Indikator per bangunan nilainya datang dari rata-rata, bukan dari `nilai`.
+  // Skor di layar memakai jalur yang sama persis dengan yang dipakai server,
+  // supaya angka yang dilihat penilai tidak pernah berbeda dari yang disimpan.
+  const nilaiGabungan = useMemo(
+    () => gabungNilai(nilai, barisAset),
+    [nilai, barisAset],
+  );
+
+  const skor = useMemo(
+    () => hitungSkor(nilaiGabungan, kantongLumpur),
+    [nilaiGabungan, kantongLumpur],
+  );
   const kategori = kategoriIksi(skor.total);
 
   const progresKomponen = useMemo(
     () =>
       KOMPONEN_UTAMA.map((k) => {
         const daun = daunRelevan(k.kode, kantongLumpur);
-        const terisi = daun.filter((d) => nilai[d] !== null && nilai[d] !== undefined).length;
+        const terisi = daun.filter(
+          (d) => nilaiGabungan[d] !== null && nilaiGabungan[d] !== undefined,
+        ).length;
         return { kode: k.kode, nomor: k.nomor, label: k.label, total: daun.length, terisi };
       }),
-    [nilai, kantongLumpur],
+    [nilaiGabungan, kantongLumpur],
   );
+
+  /**
+   * Sisa indikator kosong per komponen, untuk menerangkan tombol Ajukan yang
+   * masih terkunci. Komponen yang sudah tuntas tidak disebut sama sekali.
+   */
+  const sisaPerKomponen = useMemo(
+    () =>
+      progresKomponen
+        .filter((k) => k.terisi < k.total)
+        .map((k) => ({ kode: k.kode, nomor: k.nomor, sisa: k.total - k.terisi })),
+    [progresKomponen],
+  );
+
+  /** Kelengkapan per jenis bangunan, untuk kartu penunjuk di tab Prasarana Fisik. */
+  const kelengkapanJenis = useMemo(() => {
+    const stat = statistikPengisian(
+      props.aset.flatMap((k) => k.daftar.map((a) => ({ id: a.id, jenis: k.jenis }))),
+      barisAset,
+      kantongLumpur,
+    );
+    return new Map<JenisAset, [number, number]>(
+      stat.map((s) => [s.jenis, [s.lengkap, s.bangunan]]),
+    );
+  }, [props.aset, barisAset, kantongLumpur]);
+
+  /** Jenis bangunan yang cakupan penilaiannya masih di bawah ambang. */
+  const kelompokCakupanRendah = useMemo(() => {
+    const hasil: { jenis: JenisAset; lengkap: number; total: number }[] = [];
+    for (const [jenis, [lengkap, total]] of kelengkapanJenis) {
+      if (total > 0 && lengkap / total < AMBANG_CAKUPAN_RENDAH) {
+        hasil.push({ jenis, lengkap, total });
+      }
+    }
+    return hasil;
+  }, [kelengkapanJenis]);
+
+  /** Total bangunan yang sudah dinilai tuntas, untuk lencana pada bilah tab. */
+  const ringkasBangunan = useMemo<[number, number]>(() => {
+    let selesai = 0;
+    let total = 0;
+    for (const [lengkap, jml] of kelengkapanJenis.values()) {
+      selesai += lengkap;
+      total += jml;
+    }
+    return [selesai, total];
+  }, [kelengkapanJenis]);
 
   /* ----------------------------------------------------- perpindahan tab */
 
@@ -173,6 +307,55 @@ export function FormPenilaian(props: FormPenilaianProps) {
     setTab(kode);
     awalTab.current?.scrollIntoView({ block: "start" });
   }, []);
+
+  /**
+   * Tinggi bilah tab yang menempel, dibagikan lewat CSS variable `--bilah-tab`.
+   *
+   * Panel isian punya kepala yang juga menempel. Tanpa ukuran ini, keduanya
+   * berebut baris teratas dan kepala panel tertutup bilah tab — persis
+   * informasi yang paling dibutuhkan penilai saat sedang menggulir jauh ke
+   * bawah. Tingginya tidak bisa ditulis tetap: bilahnya membungkus jadi satu
+   * sampai tiga baris tergantung lebar layar, dan letaknya pun berbeda (di
+   * bawah header aplikasi pada layar sempit, di puncak pada layar lebar).
+   */
+  const bilahTab = useRef<HTMLDivElement>(null);
+  const [bilahBawah, setBilahBawah] = useState(56);
+
+  useEffect(() => {
+    const el = bilahTab.current;
+    if (!el) return;
+
+    const ukur = () => {
+      const atas = Number.parseFloat(getComputedStyle(el).top);
+      setBilahBawah((Number.isFinite(atas) ? atas : 0) + el.offsetHeight);
+    };
+
+    ukur();
+    const pengamat = new ResizeObserver(ukur);
+    pengamat.observe(el);
+    window.addEventListener("resize", ukur);
+    return () => {
+      pengamat.disconnect();
+      window.removeEventListener("resize", ukur);
+    };
+  }, []);
+
+  /**
+   * Jenis bangunan yang sedang dibuka pada tab Per Bangunan.
+   *
+   * Disimpan di sini, bukan di dalam panel, supaya kartu penunjuk pada tab
+   * Prasarana Fisik bisa melompat langsung ke jenis yang bersangkutan. `null`
+   * berarti panel memakai jenis pertama yang tersedia.
+   */
+  const [jenisBangunan, setJenisBangunan] = useState<JenisAset | null>(null);
+
+  const bukaPerBangunan = useCallback(
+    (jenis: JenisAset) => {
+      setJenisBangunan(jenis);
+      gantiTab(TAB_BANGUNAN);
+    },
+    [gantiTab],
+  );
 
   const indeksTab = URUTAN_TAB.indexOf(tab);
   const tabSebelum = indeksTab > 0 ? URUTAN_TAB[indeksTab - 1] : null;
@@ -198,11 +381,13 @@ export function FormPenilaian(props: FormPenilaianProps) {
       catatan: penilaian.catatan,
       nilai: nilai as Record<string, number | null>,
       keterangan,
+      nilaiAset: asetKotor ? barisAset : undefined,
       areal,
     });
     setMenyimpan(false);
     if (hasil.ok) {
       setKotor(false);
+      setAsetKotor(false);
       setPesan({ jenis: "ok", teks: "Tersimpan" });
       // Autosave cukup ditandai indikator kecil; toast hanya untuk aksi yang
       // memang ditekan pengguna, supaya tidak muncul terus-menerus saat mengisi.
@@ -214,7 +399,7 @@ export function FormPenilaian(props: FormPenilaianProps) {
       toast.galat("Gagal menyimpan", hasil.pesan ?? "Periksa koneksi lalu coba lagi.");
     }
     return hasil;
-  }, [penilaian.id, penilaian.catatan, kantongLumpur, jumlahP3a, jumlahGp3a, nilai, keterangan, areal, toast]);
+  }, [penilaian.id, penilaian.catatan, kantongLumpur, jumlahP3a, jumlahGp3a, nilai, keterangan, asetKotor, barisAset, areal, toast]);
 
   // Simpan otomatis 2 detik setelah perubahan terakhir berhenti.
   useEffect(() => {
@@ -247,13 +432,82 @@ export function FormPenilaian(props: FormPenilaianProps) {
     setKotor(true);
   }, []);
 
+  const ubahNilaiAset = useCallback((asetId: number, kode: string, v: number | null) => {
+    setNilaiAset((s) => {
+      const kunci = kunciSel(asetId, kode);
+      if (v === null) {
+        if (!(kunci in s)) return s;
+        const sisa = { ...s };
+        delete sisa[kunci];
+        return sisa;
+      }
+      // Diisi tangan berarti bukan hasil pengisian massal lagi, walaupun
+      // angkanya kebetulan sama. Yang dicatat adalah cara mengisinya.
+      return { ...s, [kunci]: { nilai: v, massal: false } };
+    });
+    setKotor(true);
+    setAsetKotor(true);
+  }, []);
+
+  /**
+   * Menyalin seluruh nilai satu bangunan ke semua bangunan sejenis.
+   *
+   * Bangunan yang sudah diperiksa satu per satu TIDAK ditimpa. Pengisian massal
+   * itu jalan pintas untuk yang belum disentuh, bukan alat untuk menghapus
+   * hasil pemeriksaan yang sudah dikerjakan.
+   */
+  const salinKeSemua = useCallback(
+    (jenis: JenisAset, dariAsetId: number) => {
+      const daftar = props.aset.find((k) => k.jenis === jenis)?.daftar ?? [];
+      const kodeJenis = indikatorUntukAset(jenis, kantongLumpur);
+
+      setNilaiAset((s) => {
+        const berikut = { ...s };
+        for (const kode of kodeJenis) {
+          const sumber = s[kunciSel(dariAsetId, kode)];
+          if (!sumber) continue;
+          for (const a of daftar) {
+            if (a.id === dariAsetId) continue;
+            const kunci = kunciSel(a.id, kode);
+            if (berikut[kunci] && !berikut[kunci].massal) continue;
+            berikut[kunci] = { nilai: sumber.nilai, massal: true };
+          }
+        }
+        return berikut;
+      });
+
+      setKotor(true);
+      setAsetKotor(true);
+      toast.info(
+        "Nilai disalin",
+        `Diterapkan ke bangunan sejenis yang belum diperiksa satu per satu.`,
+      );
+    },
+    [props.aset, kantongLumpur, toast],
+  );
+
   async function ajukan() {
+    // Cakupan tipis tidak diblokir — sesuai keputusan "rata-rata dari yang
+    // terisi saja" — tapi disebutkan di sini supaya pengaju tidak mengajukan
+    // tanpa sadar datanya baru mewakili sebagian kecil bangunan.
+    const catatanCakupan =
+      kelompokCakupanRendah.length > 0
+        ? " " +
+          kelompokCakupanRendah
+            .map(
+              (k) =>
+                `${JENIS_ASET[k.jenis].label} baru ${k.lengkap} dari ${k.total} bangunan selesai dinilai.`,
+            )
+            .join(" ")
+        : "";
+
     const setuju = await konfirmasi({
       judul: "Ajukan penilaian ini?",
       pesan: `${di.nama} — ${penilaian.triwulan} ${penilaian.tahun}. Nilai IKSI ${formatAngka(skor.total, 2)} (${INFO_KATEGORI_IKSI[kategori].label}).`,
       catatan:
-        "Setelah diajukan, penilaian terkunci dan hanya bisa diubah lagi bila Administrator mengembalikannya untuk revisi.",
-      tombolYa: "Ya, ajukan",
+        "Setelah diajukan, penilaian terkunci dan hanya bisa diubah lagi bila Administrator mengembalikannya untuk revisi." +
+        catatanCakupan,
+      tombolYa: catatanCakupan ? "Tetap ajukan" : "Ya, ajukan",
       nada: "peringatan",
     });
     if (!setuju) return;
@@ -387,7 +641,10 @@ export function FormPenilaian(props: FormPenilaianProps) {
   const lengkap = skor.belumTerisi.length === 0;
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1fr_20rem]">
+    <div
+      className="grid gap-4 xl:grid-cols-[1fr_20rem]"
+      style={{ "--bilah-tab": `${bilahBawah}px` } as CSSProperties}
+    >
       <div className="min-w-0 space-y-4">
         {/* ------------------------------------------------ identitas D.I. */}
         <Kartu>
@@ -458,7 +715,10 @@ export function FormPenilaian(props: FormPenilaianProps) {
             berikutnya supaya seluruh komponen terlihat sekaligus — tab yang
             tersembunyi di balik gulir mudah terlewat penilai. Bilahnya menempel
             saat halaman digulir supaya pindah komponen tidak perlu naik dulu. */}
-        <div className="scroll-halus sticky top-14 z-20 -mx-1 overflow-x-auto bg-(--latar) px-1 py-2 lg:top-0 lg:overflow-visible">
+        <div
+          ref={bilahTab}
+          className="scroll-halus sticky top-14 z-20 -mx-1 overflow-x-auto bg-(--latar) px-1 py-2 lg:top-0 lg:overflow-visible"
+        >
           <div className="flex min-w-max gap-1.5 lg:min-w-0 lg:flex-wrap" role="tablist">
             {progresKomponen.map((k) => {
               const ini = tab === k.kode;
@@ -496,7 +756,54 @@ export function FormPenilaian(props: FormPenilaianProps) {
                   </span>
                 </button>
               );
-            })}
+            }).flatMap((tombol, i) =>
+              // "Per Bangunan" duduk tepat setelah Prasarana Fisik, karena
+              // isinya memang bagian dari komponen itu.
+              progresKomponen[i].kode !== "I"
+                ? [tombol]
+                : [
+                    tombol,
+                    <button
+                      key={TAB_BANGUNAN}
+                      role="tab"
+                      aria-selected={tab === TAB_BANGUNAN}
+                      onClick={() => gantiTab(TAB_BANGUNAN)}
+                      // Lencana tab lain menghitung indikator; yang ini
+                      // menghitung bangunan. Disebutkan supaya angkanya tidak
+                      // dibaca dengan satuan yang keliru.
+                      title={`${ringkasBangunan[0]} dari ${ringkasBangunan[1]} bangunan selesai dinilai`}
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
+                        tab === TAB_BANGUNAN
+                          ? "border-brand-600 bg-brand-600 text-white"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50",
+                      )}
+                    >
+                      <Boxes
+                        className={cn(
+                          "h-3.5 w-3.5 shrink-0",
+                          tab === TAB_BANGUNAN ? "text-brand-200" : "text-slate-400",
+                        )}
+                        aria-hidden
+                      />
+                      <span className="max-w-36 truncate text-xs font-medium lg:max-w-none">
+                        Per Bangunan
+                      </span>
+                      <span
+                        className={cn(
+                          "rounded-full px-1.5 py-0.5 font-mono text-[10px] tabular-nums",
+                          tab === TAB_BANGUNAN
+                            ? "bg-white/20 text-white"
+                            : ringkasBangunan[0] === ringkasBangunan[1] && ringkasBangunan[1] > 0
+                              ? "bg-emerald-50 text-emerald-600"
+                              : "bg-slate-100 text-slate-500",
+                        )}
+                      >
+                        {ringkasBangunan[0]}/{ringkasBangunan[1]}
+                      </span>
+                    </button>,
+                  ],
+            )}
             <button
               role="tab"
               aria-selected={tab === "areal"}
@@ -514,7 +821,19 @@ export function FormPenilaian(props: FormPenilaianProps) {
         </div>
 
         {/* ------------------------------------------------------------ isi tab */}
-        {tab === "areal" ? (
+        {tab === TAB_BANGUNAN ? (
+          <PanelPerBangunan
+            aset={props.aset}
+            nilaiAset={nilaiAset}
+            kantongLumpur={kantongLumpur}
+            namaDi={di.nama}
+            terkunci={!bisaEdit}
+            jenis={jenisBangunan}
+            onGantiJenis={setJenisBangunan}
+            onUbah={ubahNilaiAset}
+            onSalinKeSemua={salinKeSemua}
+          />
+        ) : tab === "areal" ? (
           <PanelAreal
             nilai={areal}
             luasBaku={di.luas_baku}
@@ -571,6 +890,8 @@ export function FormPenilaian(props: FormPenilaianProps) {
                 terkunci={!bisaEdit}
                 onUbah={ubahNilai}
                 onUbahKeterangan={ubahKeterangan}
+                kelengkapanJenis={kelengkapanJenis}
+                onBukaPerBangunan={bukaPerBangunan}
               />
             </KartuIsi>
           </Kartu>
@@ -669,6 +990,31 @@ export function FormPenilaian(props: FormPenilaianProps) {
                     <Send className="h-4 w-4" />
                     Ajukan Penilaian
                   </Tombol>
+
+                  {/* Tombol mati tanpa keterangan membuat penilai menebak-nebak
+                      apa yang kurang, lalu menyisir tujuh tab satu per satu.
+                      Sisanya disebut per komponen dan bisa langsung diklik. */}
+                  {!lengkap ? (
+                    <div className="rounded-lg bg-slate-50 px-3 py-2.5">
+                      <p className="text-[11px] leading-relaxed text-slate-600">
+                        Bisa diajukan setelah seluruh indikator terisi. Sisa{" "}
+                        <strong className="font-semibold">{skor.belumTerisi.length}</strong> di:
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {sisaPerKomponen.map((k) => (
+                          <button
+                            key={k.kode}
+                            type="button"
+                            onClick={() => gantiTab(k.kode)}
+                            className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-700"
+                          >
+                            {k.nomor}
+                            <span className="ml-1 font-mono text-slate-400">{k.sisa}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
@@ -707,35 +1053,52 @@ export function FormPenilaian(props: FormPenilaianProps) {
                 </Tombol>
               ) : null}
 
+              {/* Mengulang dan menghapus dilipat di balik satu baris.
+                  Keduanya membuang pekerjaan berjam-jam, dan sebelumnya
+                  terpampang sebagai dua tombol penuh warna tepat di bawah
+                  "Ajukan Penilaian" — yang paling sering ditekan. Menaruh aksi
+                  yang sulit dibatalkan sebesar dan sedekat itu dengan aksi
+                  sehari-hari adalah undangan untuk salah klik. */}
               {bisaHapus ? (
-                <div className="space-y-2 border-t border-slate-100 pt-3">
-                  <Tombol
-                    varian="peringatan"
-                    className="w-full"
-                    onClick={() => void ulangi()}
-                    disabled={menyimpan || mengulangi || menghapus}
-                  >
-                    {mengulangi ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4" />
-                    )}
-                    Ulangi Penilaian
-                  </Tombol>
-                  <Tombol
-                    varian="bahaya"
-                    className="w-full"
-                    onClick={() => void hapus()}
-                    disabled={menyimpan || mengulangi || menghapus}
-                  >
-                    {menghapus ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                    Hapus Penilaian
-                  </Tombol>
-                </div>
+                <details className="group border-t border-slate-100 pt-3">
+                  <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-1 py-1 text-xs text-slate-500 transition-colors hover:text-slate-700">
+                    Tindakan lain
+                    <ChevronRight
+                      className="h-3.5 w-3.5 transition-transform group-open:rotate-90"
+                      aria-hidden
+                    />
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    <Tombol
+                      varian="peringatan"
+                      ukuran="sm"
+                      className="w-full"
+                      onClick={() => void ulangi()}
+                      disabled={menyimpan || mengulangi || menghapus}
+                    >
+                      {mengulangi ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      Ulangi Penilaian
+                    </Tombol>
+                    <Tombol
+                      varian="bahaya"
+                      ukuran="sm"
+                      className="w-full"
+                      onClick={() => void hapus()}
+                      disabled={menyimpan || mengulangi || menghapus}
+                    >
+                      {menghapus ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                      Hapus Penilaian
+                    </Tombol>
+                  </div>
+                </details>
               ) : null}
             </div>
 

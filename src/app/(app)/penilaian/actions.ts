@@ -5,12 +5,68 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { ambilSesi } from "@/lib/auth";
-import { INDIKATOR_INPUT, hitungSkor, isRelevan } from "@/lib/iksi/scoring";
+import {
+  INDIKATOR_PER_UNIT,
+  dinilaiPerUnit,
+  gabungNilai,
+  indikatorUntukAset,
+  type BarisNilaiAset,
+} from "@/lib/iksi/per-bangunan";
+import { INDIKATOR_INPUT, NODE_BY_KODE, hitungSkor, isRelevan } from "@/lib/iksi/scoring";
 import type { NilaiInput } from "@/lib/iksi/types";
+import { ambilNilaiAset } from "@/lib/data/penilaian";
 import { createClient } from "@/lib/supabase/server";
-import type { OpsiKantongLumpur, PeriodeTriwulan, StatusPenilaian } from "@/lib/supabase/types";
+import type {
+  JenisAset,
+  OpsiKantongLumpur,
+  PeriodeTriwulan,
+  StatusPenilaian,
+} from "@/lib/supabase/types";
 
 const KODE_VALID = new Set(INDIKATOR_INPUT.map((n) => n.kode));
+
+/**
+ * Batas baris per perintah insert.
+ *
+ * D.I. terberat menghasilkan 5.197 baris nilai per bangunan. Mengirimnya dalam
+ * satu perintah berisiko kena batas ukuran payload PostgREST, jadi dipotong.
+ */
+const PER_SISIPAN = 500;
+
+/** Ukuran halaman PostgREST. Batas `max-rows` Supabase juga 1000. */
+const PER_TARIKAN = 1000;
+
+/**
+ * Peta `id aset -> jenis` untuk satu D.I.
+ *
+ * Dipakai memeriksa bahwa tiap baris nilai per bangunan memang menunjuk aset
+ * milik D.I. ini, dan indikatornya memang berlaku bagi jenis bangunan itu.
+ *
+ * Ditarik per halaman: satu D.I. punya sampai 1.039 aset, di atas `max-rows`
+ * PostgREST yang bernilai 1000. Kalau terpotong, aset yang hilang akan dianggap
+ * tidak sah dan nilainya dibuang diam-diam.
+ */
+async function ambilJenisAset(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  diId: number,
+): Promise<Map<number, JenisAset>> {
+  const peta = new Map<number, JenisAset>();
+
+  for (let dari = 0; ; dari += PER_TARIKAN) {
+    const { data, error } = await supabase
+      .from("aset")
+      .select("id, jenis")
+      .eq("di_id", diId)
+      .order("id")
+      .range(dari, dari + PER_TARIKAN - 1);
+
+    if (error || !data) break;
+    for (const a of data) peta.set(a.id, a.jenis);
+    if (data.length < PER_TARIKAN) break;
+  }
+
+  return peta;
+}
 
 export interface HasilAksi {
   ok: boolean;
@@ -37,14 +93,38 @@ export async function buatPenilaian(_prev: HasilAksi, formData: FormData): Promi
     kantongLumpur: formData.get("kantongLumpur"),
   });
   if (!parsed.success) return { ok: false, pesan: "Data tidak lengkap." };
+  return buat(parsed.data);
+}
 
+const SkemaMulai = SkemaBuat.omit({ kantongLumpur: true });
+
+/**
+ * Mulai penilaian langsung dari kartu D.I. di papan, tanpa dialog.
+ *
+ * Kantong lumpur sengaja tidak ditanyakan di sini. Nilainya menempel pada
+ * D.I. dan tidak berubah tiap triwulan, jadi menanyakannya empat kali setahun
+ * untuk jawaban yang sama cuma menambah satu langkah sebelum pengisian mulai.
+ * Defaultnya "ada", sama seperti default dialog lama, dan tetap bisa diubah di
+ * dalam form penilaian.
+ */
+export async function mulaiPenilaian(muatan: {
+  diId: number;
+  tahun: number;
+  triwulan: PeriodeTriwulan;
+}): Promise<HasilAksi> {
+  const parsed = SkemaMulai.safeParse(muatan);
+  if (!parsed.success) return { ok: false, pesan: "Data tidak lengkap." };
+  return buat({ ...parsed.data, kantongLumpur: "ada" });
+}
+
+async function buat(muatan: z.infer<typeof SkemaBuat>): Promise<HasilAksi> {
   const sesi = await ambilSesi();
   const supabase = await createClient();
 
   const { data: di } = await supabase
     .from("daerah_irigasi")
     .select("id, upt_id")
-    .eq("id", parsed.data.diId)
+    .eq("id", muatan.diId)
     .single();
 
   if (!di?.upt_id) return { ok: false, pesan: "Daerah irigasi tidak valid." };
@@ -57,9 +137,9 @@ export async function buatPenilaian(_prev: HasilAksi, formData: FormData): Promi
     .insert({
       di_id: di.id,
       upt_id: di.upt_id,
-      tahun: parsed.data.tahun,
-      triwulan: parsed.data.triwulan as PeriodeTriwulan,
-      kantong_lumpur: parsed.data.kantongLumpur as OpsiKantongLumpur,
+      tahun: muatan.tahun,
+      triwulan: muatan.triwulan as PeriodeTriwulan,
+      kantong_lumpur: muatan.kantongLumpur as OpsiKantongLumpur,
       status: "draft",
       jumlah_p3a: null,
       jumlah_gp3a: null,
@@ -102,6 +182,18 @@ const SkemaSimpan = z.object({
   catatan: z.string().max(2000).nullable(),
   nilai: z.record(z.string(), z.number().int().min(0).max(100).nullable()),
   keterangan: z.record(z.string(), z.string().max(500)).optional(),
+  /** Nilai per bangunan untuk indikator Komponen I yang dinilai per unit. */
+  nilaiAset: z
+    .array(
+      z.object({
+        asetId: z.number().int().positive(),
+        indikatorKode: z.string().max(60),
+        nilai: z.number().int().min(0).max(100),
+        massal: z.boolean().optional(),
+      }),
+    )
+    .max(20000)
+    .optional(),
   areal: z
     .object({
       bangunan_utama: z.number().min(0),
@@ -127,14 +219,23 @@ export async function simpanPenilaian(muatan: MuatanSimpan): Promise<HasilAksi> 
   const parsed = SkemaSimpan.safeParse(muatan);
   if (!parsed.success) return { ok: false, pesan: "Data isian tidak valid." };
 
-  const { id, kantongLumpur, jumlahP3a, jumlahGp3a, catatan, nilai, keterangan, areal } =
-    parsed.data;
+  const {
+    id,
+    kantongLumpur,
+    jumlahP3a,
+    jumlahGp3a,
+    catatan,
+    nilai,
+    keterangan,
+    nilaiAset,
+    areal,
+  } = parsed.data;
 
   const supabase = await createClient();
 
   const { data: penilaian } = await supabase
     .from("penilaian")
-    .select("id, status")
+    .select("id, status, di_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -145,16 +246,59 @@ export async function simpanPenilaian(muatan: MuatanSimpan): Promise<HasilAksi> 
     return { ok: false, pesan: "Penilaian sudah diajukan dan tidak bisa diubah." };
   }
 
-  // Buang kode yang tidak dikenal atau tidak relevan bagi skenario kantong lumpur.
+  // Buang kode yang tidak dikenal atau tidak relevan bagi skenario kantong
+  // lumpur. Indikator yang dinilai per bangunan juga dibuang di sini: nilainya
+  // datang dari rata-rata, bukan dari ketikan, jadi kiriman klien untuk kode
+  // itu tidak boleh dipercaya sama sekali.
   const bersih: NilaiInput = {};
   for (const [kode, v] of Object.entries(nilai)) {
     if (!KODE_VALID.has(kode) || v === null || v === undefined) continue;
-    const node = INDIKATOR_INPUT.find((n) => n.kode === kode);
+    if (INDIKATOR_PER_UNIT.has(kode)) continue;
+    const node = NODE_BY_KODE.get(kode);
     if (!node || !isRelevan(node, kantongLumpur)) continue;
     bersih[kode] = v;
   }
 
-  const skor = hitungSkor(bersih, kantongLumpur);
+  // Nilai per bangunan wajib disaring terhadap register aset D.I. ini. Tanpa
+  // itu, klien yang dimodifikasi bisa mengarang `asetId` atau memasangkan
+  // indikator ke jenis bangunan yang tidak berhak, dan skor yang dibekukan
+  // jadi bisa dimanipulasi dari browser.
+  // `nilaiAset` tidak dikirim sama sekali berarti pemanggil tidak menyentuh
+  // penilaian per bangunan, jadi baris yang sudah tersimpan DIPERTAHANKAN dan
+  // hanya dibaca untuk menghitung skor. Membedakan ini dari array kosong itu
+  // penting: array kosong berarti "hapus semua", dan kalau keduanya disamakan,
+  // satu simpan dari bagian form yang lain akan memusnahkan ribuan baris
+  // pemeriksaan tanpa ada yang meminta.
+  const menyentuhAset = nilaiAset !== undefined;
+
+  let barisAset: BarisNilaiAset[];
+  if (menyentuhAset) {
+    const asetDi = await ambilJenisAset(supabase, penilaian.di_id);
+
+    // Dihitung sekali per jenis, bukan per baris: D.I. terberat mengirim ribuan
+    // baris dan membangun ulang daftarnya tiap kali jelas sia-sia.
+    const izin = new Map<JenisAset, ReadonlySet<string>>();
+    const indikatorSah = (jenis: JenisAset): ReadonlySet<string> => {
+      let s = izin.get(jenis);
+      if (!s) {
+        s = new Set(indikatorUntukAset(jenis, kantongLumpur));
+        izin.set(jenis, s);
+      }
+      return s;
+    };
+
+    barisAset = [];
+    for (const b of nilaiAset) {
+      const jenis = asetDi.get(b.asetId);
+      if (!jenis || !dinilaiPerUnit(jenis)) continue;
+      if (!indikatorSah(jenis).has(b.indikatorKode)) continue;
+      barisAset.push(b);
+    }
+  } else {
+    barisAset = await ambilNilaiAset(supabase, id);
+  }
+
+  const skor = hitungSkor(gabungNilai(bersih, barisAset), kantongLumpur);
   const skorKomponen = Object.fromEntries(
     skor.komponen.map((k) => [k.nomor, Number(k.nilai.toFixed(4))]),
   );
@@ -183,16 +327,45 @@ export async function simpanPenilaian(muatan: MuatanSimpan): Promise<HasilAksi> 
     .eq("penilaian_id", id);
   if (errHapus) return { ok: false, pesan: "Gagal memperbarui nilai indikator." };
 
-  const baris = Object.entries(bersih).map(([kode, v]) => ({
-    penilaian_id: id,
-    indikator_kode: kode,
-    nilai: v as number,
-    keterangan: keterangan?.[kode]?.trim() || null,
-  }));
+  // Nilai yang disimpan adalah hasil gabungan: agregat apa adanya, per-unit
+  // sudah berupa rata-rata. Dibulatkan ke 3 desimal mengikuti lebar kolom.
+  const gabungan = gabungNilai(bersih, barisAset);
+  const baris = Object.entries(gabungan)
+    .filter(([, v]) => v !== null && v !== undefined)
+    .map(([kode, v]) => ({
+      penilaian_id: id,
+      indikator_kode: kode,
+      nilai: Number((v as number).toFixed(3)),
+      keterangan: keterangan?.[kode]?.trim() || null,
+    }));
 
   if (baris.length) {
     const { error } = await supabase.from("penilaian_nilai").insert(baris);
     if (error) return { ok: false, pesan: "Gagal menyimpan nilai indikator." };
+  }
+
+  // Ganti seluruh baris nilai per bangunan, dengan alasan yang sama seperti di
+  // atas: bangunan yang dihapus dari register, atau indikator yang tidak lagi
+  // relevan karena kantong lumpur berubah, harus ikut hilang. Hanya dikerjakan
+  // bila pemanggil memang mengirim `nilaiAset`.
+  if (menyentuhAset) {
+    const { error: errHapusAset } = await supabase
+      .from("penilaian_aset_nilai")
+      .delete()
+      .eq("penilaian_id", id);
+    if (errHapusAset) return { ok: false, pesan: "Gagal memperbarui nilai per bangunan." };
+
+    for (let i = 0; i < barisAset.length; i += PER_SISIPAN) {
+      const potongan = barisAset.slice(i, i + PER_SISIPAN).map((b) => ({
+        penilaian_id: id,
+        aset_id: b.asetId,
+        indikator_kode: b.indikatorKode,
+        nilai: b.nilai as number,
+        massal: b.massal ?? false,
+      }));
+      const { error } = await supabase.from("penilaian_aset_nilai").insert(potongan);
+      if (error) return { ok: false, pesan: "Gagal menyimpan nilai per bangunan." };
+    }
   }
 
   if (areal) {

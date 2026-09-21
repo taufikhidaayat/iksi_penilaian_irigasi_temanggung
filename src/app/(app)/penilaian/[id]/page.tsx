@@ -17,7 +17,7 @@ export default async function HalamanFormPenilaian({ params }: PageProps<"/penil
 
   if (!data) notFound();
 
-  const { penilaian, di, upt, nilai, keterangan, areal } = data;
+  const { penilaian, di, upt, nilai, keterangan, nilaiAset, areal } = data;
 
   // RLS sudah membatasi, tetapi tegaskan juga di lapisan render.
   if (!sesi.isAdmin && penilaian.upt_id !== sesi.profil.upt_id) notFound();
@@ -71,6 +71,7 @@ export default async function HalamanFormPenilaian({ params }: PageProps<"/penil
         namaUpt={upt?.nama ?? "—"}
         nilaiAwal={nilai}
         keteranganAwal={keterangan}
+        nilaiAsetAwal={nilaiAset}
         arealAwal={areal}
         bisaEdit={bisaEdit}
         isAdmin={sesi.isAdmin}

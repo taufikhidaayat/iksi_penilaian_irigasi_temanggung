@@ -48,3 +48,9 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /blob-report/
+
+# Cadangan otomatis dari scripts/ganti-aset-bendung.mjs.
+# Bikinan skrip dan terus bertambah tiap dijalankan; jaring pengaman lokal,
+# bukan bagian dari kode. Berkas sumber di data/aset-draf/ tetap ikut git
+# karena dibaca aplikasi saat runtime.
+/data/cadangan/

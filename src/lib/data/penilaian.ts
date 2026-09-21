@@ -9,15 +9,61 @@ import type {
   Upt,
 } from "@/lib/supabase/types";
 
+import type { BarisNilaiAset } from "@/lib/iksi/per-bangunan";
 import type { NilaiInput } from "@/lib/iksi/types";
+
+/** Ukuran halaman PostgREST. Batas `max-rows` Supabase juga 1000. */
+const PER_TARIKAN = 1000;
 
 export interface PenilaianLengkap {
   penilaian: Penilaian;
   di: DaerahIrigasi;
   upt: Upt | null;
+  /** Nilai agregat, yaitu indikator yang diisi manual satu angka per D.I. */
   nilai: NilaiInput;
   keterangan: Record<string, string>;
+  /** Nilai per bangunan untuk indikator Komponen I yang dinilai per unit. */
+  nilaiAset: BarisNilaiAset[];
   areal: ArealTerdampak | null;
+}
+
+/**
+ * Nilai per bangunan, ditarik per halaman sampai habis.
+ *
+ * Satu D.I. bisa punya ribuan baris (yang terberat 5.197), jauh di atas
+ * `max-rows` PostgREST yang bernilai 1000. Menaikkan `limit` tidak menolong:
+ * permintaan tetap dipenuhi sampai 1000 saja, tanpa galat. Baris yang hilang
+ * akan membuat rata-rata dihitung dari sebagian bangunan saja, dan diam-diam
+ * menghasilkan skor yang salah.
+ */
+export async function ambilNilaiAset(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  penilaianId: string,
+): Promise<BarisNilaiAset[]> {
+  const hasil: BarisNilaiAset[] = [];
+
+  for (let dari = 0; ; dari += PER_TARIKAN) {
+    const { data, error } = await supabase
+      .from("penilaian_aset_nilai")
+      .select("aset_id, indikator_kode, nilai, massal")
+      .eq("penilaian_id", penilaianId)
+      .order("aset_id")
+      .order("indikator_kode")
+      .range(dari, dari + PER_TARIKAN - 1);
+
+    if (error || !data) break;
+    for (const b of data) {
+      hasil.push({
+        asetId: b.aset_id,
+        indikatorKode: b.indikator_kode,
+        nilai: b.nilai,
+        massal: b.massal,
+      });
+    }
+    if (data.length < PER_TARIKAN) break;
+  }
+
+  return hasil;
 }
 
 export async function ambilPenilaian(id: string): Promise<PenilaianLengkap | null> {
@@ -31,15 +77,17 @@ export async function ambilPenilaian(id: string): Promise<PenilaianLengkap | nul
 
   if (!penilaian) return null;
 
-  const [{ data: di }, { data: upt }, { data: baris }, { data: areal }] = await Promise.all([
-    supabase.from("daerah_irigasi").select("*").eq("id", penilaian.di_id).single(),
-    supabase.from("upt").select("*").eq("id", penilaian.upt_id).maybeSingle(),
-    supabase
-      .from("penilaian_nilai")
-      .select("indikator_kode, nilai, keterangan")
-      .eq("penilaian_id", id),
-    supabase.from("areal_terdampak").select("*").eq("penilaian_id", id).maybeSingle(),
-  ]);
+  const [{ data: di }, { data: upt }, { data: baris }, { data: areal }, nilaiAset] =
+    await Promise.all([
+      supabase.from("daerah_irigasi").select("*").eq("id", penilaian.di_id).single(),
+      supabase.from("upt").select("*").eq("id", penilaian.upt_id).maybeSingle(),
+      supabase
+        .from("penilaian_nilai")
+        .select("indikator_kode, nilai, keterangan")
+        .eq("penilaian_id", id),
+      supabase.from("areal_terdampak").select("*").eq("penilaian_id", id).maybeSingle(),
+      ambilNilaiAset(supabase, id),
+    ]);
 
   if (!di) return null;
 
@@ -53,7 +101,7 @@ export async function ambilPenilaian(id: string): Promise<PenilaianLengkap | nul
     if (b.keterangan) keterangan[b.indikator_kode] = b.keterangan;
   }
 
-  return { penilaian, di, upt, nilai, keterangan, areal: areal ?? null };
+  return { penilaian, di, upt, nilai, keterangan, nilaiAset, areal: areal ?? null };
 }
 
 export interface BarisDaftarPenilaian {
@@ -145,4 +193,127 @@ export async function ambilDiBelumDinilai(opsi: {
 
   const dipakai = new Set((sudah ?? []).map((p) => p.di_id));
   return (di ?? []).filter((d) => !dipakai.has(d.id));
+}
+
+/* ------------------------------------------------------------------ */
+/* Papan penilaian                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface KartuPenilaian {
+  diId: number;
+  kode: string;
+  nama: string;
+  kecamatan: string | null;
+  luasBaku: number | null;
+  uptNama: string;
+  /** null selama D.I. ini belum punya penilaian pada periode terpilih. */
+  penilaianId: string | null;
+  status: StatusPenilaian | null;
+  total: number | null;
+  jmlTerisi: number | null;
+  jmlIndikator: number | null;
+  diperbarui: string | null;
+}
+
+/**
+ * Menarik seluruh baris sebuah query, halaman demi halaman.
+ *
+ * `max-rows` PostgREST bernilai 1000 dan permintaan yang melebihinya dipenuhi
+ * sebagian saja, tanpa galat. Di papan penilaian baris yang hilang tidak
+ * terlihat sebagai kesalahan: D.I. yang penilaiannya terpotong akan tampil
+ * sebagai "belum dinilai" padahal sudah, dan diklik akan membuat penilaian
+ * kedua yang ditolak unique constraint.
+ */
+async function tarikSemua<T>(
+  halaman: (dari: number, sampai: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  const hasil: T[] = [];
+
+  for (let dari = 0; ; dari += PER_TARIKAN) {
+    const { data, error } = await halaman(dari, dari + PER_TARIKAN - 1);
+    if (error || !data) break;
+    hasil.push(...data);
+    if (data.length < PER_TARIKAN) break;
+  }
+
+  return hasil;
+}
+
+/**
+ * Seluruh D.I. pada satu periode, yang sudah dinilai maupun yang belum.
+ *
+ * Papan penilaian memperlakukan keduanya sebagai satu daftar, karena unit
+ * kerjanya adalah "D.I. ini pada triwulan ini" entah barisnya sudah ada di
+ * tabel `penilaian` atau belum. D.I. yang belum dinilai pulang dengan
+ * `penilaianId` bernilai null, dan itulah yang membuat kartunya bertanda plus.
+ *
+ * Penyaringan teks sengaja tidak dikerjakan di sini. Seluruh daftar dikirim
+ * sekali ke browser lalu disaring di sana, supaya pencarian terasa seketika
+ * dan tidak menembak navigasi tiap ketikan.
+ */
+export async function ambilPapanPenilaian(opsi: {
+  tahun: number;
+  triwulan: PeriodeTriwulan;
+  uptId: number | null;
+}): Promise<KartuPenilaian[]> {
+  const supabase = await createClient();
+
+  const [di, penilaian, { data: uptRows }] = await Promise.all([
+    tarikSemua<{
+      id: number;
+      kode: string;
+      nama: string;
+      kecamatan: string | null;
+      luas_baku: number | null;
+      upt_id: number | null;
+    }>((dari, sampai) => {
+      let q = supabase
+        .from("daerah_irigasi")
+        .select("id, kode, nama, kecamatan, luas_baku, upt_id")
+        .eq("aktif", true);
+      if (opsi.uptId !== null) q = q.eq("upt_id", opsi.uptId);
+      return q.order("nama").range(dari, sampai);
+    }),
+
+    tarikSemua<{
+      id: string;
+      di_id: number;
+      status: StatusPenilaian;
+      total: number | null;
+      jml_terisi: number | null;
+      jml_indikator: number | null;
+      updated_at: string;
+    }>((dari, sampai) => {
+      let q = supabase
+        .from("penilaian")
+        .select("id, di_id, status, total, jml_terisi, jml_indikator, updated_at")
+        .eq("tahun", opsi.tahun)
+        .eq("triwulan", opsi.triwulan);
+      if (opsi.uptId !== null) q = q.eq("upt_id", opsi.uptId);
+      return q.order("di_id").range(dari, sampai);
+    }),
+
+    supabase.from("upt").select("id, nama"),
+  ]);
+
+  const petaPenilaian = new Map(penilaian.map((p) => [p.di_id, p]));
+  const petaUpt = new Map((uptRows ?? []).map((u) => [u.id, u.nama]));
+
+  return di.map((d) => {
+    const p = petaPenilaian.get(d.id);
+    return {
+      diId: d.id,
+      kode: d.kode,
+      nama: d.nama,
+      kecamatan: d.kecamatan,
+      luasBaku: d.luas_baku,
+      uptNama: (d.upt_id !== null ? petaUpt.get(d.upt_id) : null) ?? "–",
+      penilaianId: p?.id ?? null,
+      status: p?.status ?? null,
+      total: p?.total ?? null,
+      jmlTerisi: p?.jml_terisi ?? null,
+      jmlIndikator: p?.jml_indikator ?? null,
+      diperbarui: p?.updated_at ?? null,
+    };
+  });
 }
