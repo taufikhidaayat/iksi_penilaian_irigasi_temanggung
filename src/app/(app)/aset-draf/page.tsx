@@ -40,7 +40,6 @@ export default async function HalamanAsetDraf() {
       jumlahBaris: r?.jumlahBaris ?? b?.jumlah_baris ?? 0,
       jumlahDi: r?.jumlahDi ?? 0,
       jumlahKolom: b?.kolom.length ?? 0,
-      namaBerkas: b?.nama_berkas ?? "belum diimpor",
       ikon: IKON[jenis] ?? Landmark,
       tanah: TANAH.includes(jenis),
     };

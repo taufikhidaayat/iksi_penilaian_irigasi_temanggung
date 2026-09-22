@@ -185,6 +185,10 @@ export type AsetDraf = {
   di_id: number | null;
   data: Record<string, string | number | boolean | null>;
   teks_cari: string;
+  /** true bila baris ini ditambah/diubah manual di aplikasi, bukan apa adanya dari impor GIS. */
+  diedit_manual: boolean;
+  diubah_oleh: string | null;
+  diubah_pada: string | null;
 };
 
 type Tabel<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
@@ -200,6 +204,9 @@ type SisipPenilaian = Omit<
 > &
   Partial<Pick<Penilaian, "id" | "status" | "kantong_lumpur">>;
 
+type SisipAsetDraf = Omit<AsetDraf, "id" | "diedit_manual" | "diubah_oleh" | "diubah_pada"> &
+  Partial<Pick<AsetDraf, "diedit_manual" | "diubah_oleh" | "diubah_pada">>;
+
 export interface Database {
   public: {
     Tables: {
@@ -212,7 +219,7 @@ export interface Database {
       areal_terdampak: Tabel<ArealTerdampak, ArealTerdampak>;
       aset: Tabel<Aset, Omit<Aset, "id" | "created_at" | "updated_at">>;
       aset_draf_berkas: Tabel<AsetDrafBerkas, AsetDrafBerkas>;
-      aset_draf: Tabel<AsetDraf, Omit<AsetDraf, "id">>;
+      aset_draf: Tabel<AsetDraf, SisipAsetDraf>;
     };
     Views: {
       ringkasan_aset: {

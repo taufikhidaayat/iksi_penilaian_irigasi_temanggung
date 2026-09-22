@@ -30,7 +30,7 @@ export interface ItemNav {
 }
 
 export const MENU: ItemNav[] = [
-  { href: "/", label: "Dasbor", ikon: "dasbor" },
+  { href: "/", label: "Dashboard", ikon: "dasbor" },
   { href: "/penilaian", label: "Penilaian", ikon: "penilaian", prefix: true },
   { href: "/rekap", label: "Rekapitulasi", ikon: "rekap" },
   { href: "/ekspor", label: "Ekspor Excel", ikon: "ekspor" },

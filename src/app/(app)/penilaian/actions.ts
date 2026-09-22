@@ -217,8 +217,32 @@ export type MuatanSimpan = z.input<typeof SkemaSimpan>;
  * kiriman klien — supaya rekap dan ekspor tidak bisa dimanipulasi dari browser.
  */
 export async function simpanPenilaian(muatan: MuatanSimpan): Promise<HasilAksi> {
-  const parsed = SkemaSimpan.safeParse(muatan);
-  if (!parsed.success) return { ok: false, pesan: "Data isian tidak valid." };
+  // Kode yang dinilai per bangunan dibuang SEBELUM divalidasi, bukan sesudah.
+  // Nilainya boleh datang ikut di `nilai` (mis. dari state klien yang dimuat
+  // sebelum perbaikan `ambilPenilaian()`, atau dari "salin dari periode
+  // lain") berupa hasil rata-rata yang sering pecahan, sedangkan skema di
+  // bawah mewajibkan bilangan bulat. Kode ini toh dibuang lagi nanti dan
+  // dihitung ulang dari `nilaiAset` — membuangnya belakangan cuma berarti
+  // satu baris pecahan basi bisa menggagalkan validasi SELURUH payload
+  // sebelum sempat dibuang.
+  const nilaiTanpaPerUnit = muatan.nilai
+    ? Object.fromEntries(
+        Object.entries(muatan.nilai).filter(([kode]) => !INDIKATOR_PER_UNIT.has(kode)),
+      )
+    : muatan.nilai;
+
+  const parsed = SkemaSimpan.safeParse({ ...muatan, nilai: nilaiTanpaPerUnit });
+  if (!parsed.success) {
+    // Menyebut kolom yang gagal, bukan cuma "tidak valid": pesan generik
+    // membuat kegagalan seperti ini nyaris tidak mungkin ditelusuri dari
+    // layar saja — harus dibaca dari kode setiap kali.
+    const isu = parsed.error.issues[0];
+    const jalur = isu?.path.join(".");
+    return {
+      ok: false,
+      pesan: `Data isian tidak valid${jalur ? ` (${jalur})` : ""}: ${isu?.message ?? "periksa kembali isian."}`,
+    };
+  }
 
   const {
     id,

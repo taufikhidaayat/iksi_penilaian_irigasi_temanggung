@@ -16,9 +16,28 @@ export function tahunBerjalan(d = new Date()): number {
   return d.getFullYear();
 }
 
-/** Daftar tahun untuk penyaring: 5 tahun ke belakang + 1 ke depan. */
+/**
+ * Tahun SIKSI mulai dipakai (lihat `IKSI 2026 FINAL.xlsx`). Tidak ada
+ * penilaian sebelum ini, jadi daftar tahun tidak pernah mundur lebih jauh —
+ * ubah angka ini saja kalau suatu saat sistemnya "dimulai ulang".
+ */
+const TAHUN_MULAI = 2026;
+
+/** Lebar jendela minimal yang ditawarkan, dihitung dari `TAHUN_MULAI`. */
+const JENDELA_TAHUN_MINIMAL = 5;
+
+/**
+ * Daftar tahun untuk penyaring, terbaru dulu.
+ *
+ * Dimulai tetap dari `TAHUN_MULAI` (tidak ada gunanya menawarkan tahun
+ * sebelum sistem ini dipakai), dan ujungnya melebar sendiri begitu tahun
+ * berjalan + 1 melewati jendela minimal — jadi tidak perlu disentuh lagi
+ * tiap tahun baru datang. Tahun lama tidak pernah gugur dari daftar, karena
+ * dasbor/rekap/ekspor tetap perlu menoleh ke periode yang sudah lewat.
+ */
 export function daftarTahun(sekarang = tahunBerjalan()): number[] {
-  return Array.from({ length: 7 }, (_, i) => sekarang + 1 - i);
+  const akhir = Math.max(TAHUN_MULAI + JENDELA_TAHUN_MINIMAL - 1, sekarang + 1);
+  return Array.from({ length: akhir - TAHUN_MULAI + 1 }, (_, i) => akhir - i);
 }
 
 export interface Periode {

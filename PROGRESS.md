@@ -46,6 +46,7 @@ npm run db:verifikasi   # periksa RLS, trigger, dan integritas katalog
 | `supabase/migrations/0019_ringkasan_aset_draf.sql` | View ringkasan draf, bentuknya sejalan dengan `ringkasan_aset` |
 | `supabase/migrations/0020_panjang_saluran.sql` | Kolom `aset.panjang` (meter) dari berkas GIS |
 | `supabase/migrations/0021_salin_penilaian_periode.sql` | Fungsi `salin_penilaian_periode()` untuk menyalin satu periode sekaligus |
+| `supabase/migrations/0022_edit_aset_draf.sql` | Kolom `diedit_manual`, `diubah_oleh`, `diubah_pada` pada `aset_draf` |
 
 > Runner mencatat migrasi yang sudah dijalankan di tabel `_migrasi`, jadi
 > `npm run db:migrasi` aman diulang — hanya berkas baru yang dieksekusi, dan
@@ -237,8 +238,7 @@ perapian yang memang harus dilakukan petugas.
 ⚠️ **Nomor di layar karena itu berbeda dari Buku Aset cetak.** `kode_buku`
 tetap ikut dicari di halaman Aset, dan nomor draf apa adanya ikut masuk
 `teks_cari`, supaya petugas yang mengetik nomor persis seperti di berkasnya
-tetap menemukan barisnya. Tombol **Berkas asli** di menu Draf tetap mengirim
-.xlsx tanpa perubahan apa pun.
+tetap menemukan barisnya.
 
 Aturannya ada satu tempat saja untuk aplikasi: `nomorAset()` di
 `src/lib/aset.ts`, dipakai server action penyuntingan aset. Skrip impor
@@ -286,6 +286,27 @@ halaman, dan pemeriksaan peran di route handler.
 | Gorong-gorong | 556 | 28 | `07.GORONG GORONG FIX.xlsx` |
 | Tanah Saluran | 675 | 12 | `12,TANAH SALURAN FIXXXX.xlsx` |
 | Bendung Baru | 584 | 63 | `SDY bendung Kab.dbf` |
+
+**Admin bisa mengedit langsung di tabel** (migrasi 0022): klik dua kali sebuah
+sel untuk mengubahnya, tombol "Tambah baris" untuk menambah baris kosong, ikon
+tempat sampah di kolom nomor (muncul saat kursor di atas baris) untuk
+menghapus. Semuanya lewat `src/app/(app)/aset-draf/actions.ts`.
+
+Baris yang ditambah/diubah manual tetap ditandai `diedit_manual = true` di
+database (siapa dan kapan ada di `diubah_oleh`/`diubah_pada`), pola yang sama
+dengan `massal` pada nilai per bangunan dan `perlu_tinjau` pada aset resmi.
+**Sempat ditampilkan** sebagai latar kuning pudar + ikon pensil di kolom
+nomor, tetapi dicabut lagi karena dirasa mengganggu di layar — kolomnya
+sendiri sudah cukup jarang dilihat orang lain selain admin yang mengeditnya.
+Datanya tetap tersimpan kalau suatu saat penanda ini mau ditampilkan lagi
+dengan cara lain.
+
+⚠️ **Yang SENGAJA tidak diikutkan**: menyunting sel tidak menjalankan ulang
+`nomorAset()` atau pencocokan D.I. Pipeline itu panjang dan penuh pengecualian
+per jenis (lihat `ganti-aset-bendung.mjs` dan tabel `KOREKSI_DI`-nya), dan
+meniru sebagiannya di form edit berisiko salah pada kasus yang belum ketahuan.
+Kolom nomor aset (`kolom_kode`, mis. "Nomor.Bang") karena itu ditulis apa
+adanya ke kolom `kode` sesuai yang diketik admin, bukan diformat ulang otomatis.
 
 > Kartu **Bendung** (`01.BENDUNG.xlsx`, 594 baris) DIHAPUS: Dinas memakai
 > berkas GIS sebagai gantinya, dan menu Aset Irigasi pun sudah berisi data
@@ -360,13 +381,18 @@ di kedua menu bisa disandingkan langsung — memang itu gunanya menu Draf.
 | Tidak punya nomor aset di berkas | 777 |
 
 Kolom kodenya diganti saat ekspor juga, sedangkan `aset_draf.data` tetap
-menyimpan nomor draf apa adanya. Tombol **Berkas asli** mengirim .xlsx draf
-tanpa perubahan apa pun, untuk membandingkan dengan sumbernya.
+menyimpan nomor draf apa adanya.
 
-> Berkas .xlsx-nya disimpan di `data/aset-draf/`, **bukan** `public/`, supaya
-> unduhan tetap melewati pemeriksaan sesi. `next.config.ts` menyebut folder itu
-> di `outputFileTracingIncludes`; tanpa itu tombol Berkas asli jalan di dev
-> tetapi 404 pada build standalone.
+> **Tombol "Berkas asli" (unduh .xlsx/.dbf mentah dari `data/aset-draf/` apa
+> adanya) sengaja DIHAPUS** — bukan lupa dibuat. Awalnya ada supaya admin bisa
+> membandingkan nomor tampilan dengan berkas sumber, tetapi menu ini memang
+> tidak pernah punya fitur edit sama sekali (murni bahan pembanding, baca +
+> cari + Ekspor Excel saja), dan admin yang sungguhan memegang akun ini sudah
+> punya akses langsung ke berkas sumbernya di luar aplikasi. Jadi tombolnya
+> cuma jalan pintas ke sesuatu yang sudah bisa mereka buka sendiri. Ikut
+> dihapus: cabang `?asli=1` di `/api/aset-draf/[jenis]`, dan seluruh isi
+> `outputFileTracingIncludes` di `next.config.ts` (satu-satunya alasan
+> `data/aset-draf/` perlu ikut ke build standalone).
 
 #### Bendung Baru (berkas .dbf)
 
@@ -720,6 +746,8 @@ npm test     →  137 passed
 - [x] Alur status: draft → diajukan → disetujui / revisi
 - [x] **Salin penilaian periode sebelumnya** — per D.I. dari dalam form, dan
       satu periode sekaligus lewat fungsi SQL; yang sudah dinilai dilewati
+- [x] **Edit langsung di Data Aset Draf** — ubah sel, tambah/hapus baris,
+      asal suntingan tetap tercatat di database (lihat `diedit_manual`)
 - [x] **Rekapitulasi** — tabel gaya template, filter UPT, paginasi, baris Total
 - [x] **Ekspor Excel** — pratinjau + unduh, blok tanda tangan bisa diatur
 - [x] **Daerah Irigasi** — master data, pencarian
@@ -743,8 +771,9 @@ npm test     →  137 passed
 ## Yang BELUM
 
 - [ ] Ganti kata sandi admin & UPT bawaan
-- [ ] Jalankan migrasi 0021 ke Supabase (`npm run db:migrasi`). Tombol "Salin
-      dari periode lain" tidak akan jalan sebelum fungsinya ada di database
+- [ ] Jalankan migrasi 0021 dan 0022 ke Supabase (`npm run db:migrasi`).
+      Tombol "Salin dari periode lain" dan edit di Data Aset Draf tidak akan
+      jalan sebelum kolom/fungsinya ada di database
 - [ ] Penanda asal salinan (`disalin_dari` + lencana), supaya verifikator bisa
       membedakan penilaian salinan dari hasil survei baru
 - [ ] Buat akun UPT sungguhan lewat menu Pengguna
@@ -813,10 +842,10 @@ cara membedakannya dari hasil survei sungguhan. Penanda `massal` pada nilai per
 bangunan ada persis karena alasan yang sama.
 
 **Hijau Excel hanya untuk tombol yang menghasilkan berkas.** Varian tombol
-`excel` (`--color-excel-600` = #107C41) dan `<IkonExcel>` dipakai bertiga saja:
-Unduh Excel di halaman Ekspor, serta Ekspor Excel dan Berkas asli di Data Aset
-Draf. Tombol "Ekspor" di Rekapitulasi dan item sidebar "Ekspor Excel" sengaja
-tetap biru karena keduanya cuma berpindah halaman. Dengan begitu warnanya
+`excel` (`--color-excel-600` = #107C41) dan `<IkonExcel>` dipakai berdua saja:
+Unduh Excel di halaman Ekspor, dan Ekspor Excel di Data Aset Draf. Tombol
+"Ekspor" di Rekapitulasi dan item sidebar "Ekspor Excel" sengaja tetap biru
+karena keduanya cuma berpindah halaman. Dengan begitu warnanya
 berfungsi sebagai janji "klik ini, berkas .xlsx turun", bukan hiasan. Lambang
 Excel dibungkus `<IkonExcel>` di `components/ui` — logo Microsoft Excel asli
 tidak ada di Simple Icons (ikon merek Microsoft dicabut karena lisensi), jadi

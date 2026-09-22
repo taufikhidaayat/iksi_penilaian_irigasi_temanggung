@@ -15,7 +15,6 @@ export interface IsiKartuJenis {
   /** Berapa D.I. yang diwakili jenis ini. */
   jumlahDi: number;
   jumlahKolom: number;
-  namaBerkas: string;
   ikon: LucideIcon;
   /** Aset tanah dibedakan warnanya, seperti golongan 02 pada nomor asetnya. */
   tanah: boolean;
@@ -78,9 +77,10 @@ export function KartuJenis({ isi }: { isi: IsiKartuJenis }) {
           paham yang tidak perlu.
 
           Jumlah D.I. ikut disebut karena tanpa itu kartunya tidak bisa
-          dijelaskan: nomor D.I. hanya sampai 577, sedangkan Bendung Baru memuat
-          584 aset. Begitu tertulis "575 D.I.", selisihnya terbaca sebagai
-          beberapa D.I. yang punya lebih dari satu bangunan, bukan salah hitung.
+          dijelaskan: nomor D.I. hanya sampai 577, sedangkan kartu Bendung
+          (jenis `bendung_baru`) memuat 584 aset. Begitu tertulis "575 D.I.",
+          selisihnya terbaca sebagai beberapa D.I. yang punya lebih dari satu
+          bangunan, bukan salah hitung.
         */}
         <p className="mt-1.5 flex items-baseline gap-1.5">
           <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
@@ -98,7 +98,7 @@ export function KartuJenis({ isi }: { isi: IsiKartuJenis }) {
           ) : null}
         </p>
         <p className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
-          {isi.jumlahKolom} kolom · {isi.namaBerkas}
+          {isi.jumlahKolom} kolom
         </p>
       </div>
 

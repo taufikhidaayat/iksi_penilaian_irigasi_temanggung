@@ -119,3 +119,16 @@ export const KOLOM_NOMOR_DI: Partial<Record<JenisAset, string>> = {
 
 /** Kata kunci yang berupa kode D.I., mis. "0001", "538". Maksimal 4 digit. */
 export const ADALAH_KODE_DI = (kata: string): boolean => /^\d{1,4}$/.test(kata);
+
+/**
+ * Catatan singkat per jenis draf, ditampilkan sebagai info di halaman
+ * detailnya. Bukan pengulangan `keterangan` pada `JENIS_ASET` (itu bicara
+ * soal fungsi bangunannya) — ini khusus buat kejanggalan angka yang kalau
+ * dibiarkan tanpa penjelasan bikin orang mengira ada yang salah hitung.
+ */
+export const CATATAN_DRAF: Partial<Record<JenisAset, string>> = {
+  bendung_baru:
+    "575 dari 577 D.I. punya bendung di berkas ini. D.I. 241 Sipelus Kandangan " +
+    "berbagi satu bendung dengan D.I. 240, dan D.I. 161 Sidodadi tidak punya " +
+    "bendung tercatat di berkas ini.",
+};

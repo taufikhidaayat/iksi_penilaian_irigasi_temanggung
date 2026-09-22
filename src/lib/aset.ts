@@ -43,15 +43,18 @@ export const JENIS_ASET: Record<JenisAset, InfoJenisAset> = {
    * Bendung versi berkas GIS `SDY bendung Kab.dbf`, khusus menu Aset Draf.
    *
    * Bukan tipe bangunan tersendiri di Buku Aset, jadi `kodeTipe` dan `seksi`-nya
-   * sama dengan Bendung. Dibuat terpisah semata-mata supaya dua sumber data
-   * bendung bisa dibuka berdampingan tanpa yang satu menimpa yang lain.
+   * sama dengan Bendung. Dibuat sebagai jenis terpisah dari `bendung` supaya
+   * menu Aset Draf (bahan pembanding) tidak pernah menimpa data resmi di menu
+   * Aset Irigasi. Labelnya sengaja sama, "Bendung": kartu pembanding lawannya
+   * (`01.BENDUNG.xlsx`) sudah dihapus, jadi tidak ada lagi yang perlu
+   * dibedakan namanya di layar.
    */
   bendung_baru: {
-    label: "Bendung Baru",
-    singkat: "Bendung Baru",
+    label: "Bendung & MA",
+    singkat: "Bendung",
     kodeTipe: "01",
     seksi: "3.1",
-    keterangan: "Bendung versi berkas GIS, pembanding bagi draf Bendung",
+    keterangan: "Bendung versi berkas GIS",
     punyaNomenklatur: true,
   },
   sadap: {

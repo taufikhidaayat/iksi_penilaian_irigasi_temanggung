@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
-
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adalahJenisDraf, namaBerkasDraf } from "@/lib/aset-draf";
@@ -12,20 +9,6 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 const TIPE_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-/**
- * Tipe MIME berkas draf asli, menurut ekstensinya.
- *
- * Tujuh berkas draf berformat .xlsx, tetapi Bendung Baru datang sebagai .dbf
- * dari GIS. Mengirimnya dengan tipe .xlsx membuat Excel menolak membukanya
- * dengan keluhan format tidak sesuai, padahal berkasnya utuh.
- */
-function tipeBerkasAsli(nama: string): string {
-  return nama.toLowerCase().endsWith(".dbf") ? "application/x-dbf" : TIPE_XLSX;
-}
-
-/** Berkas draf asli disimpan di luar `public/` supaya tetap lewat pemeriksaan sesi. */
-const DIR_BERKAS = join(process.cwd(), "data", "aset-draf");
 
 export async function GET(
   request: NextRequest,
@@ -64,28 +47,6 @@ export async function GET(
   }
 
   const label = JENIS_ASET[jenis].label;
-
-  // ?asli=1 mengirim berkas draf apa adanya, tanpa kodefikasi nomor aset.
-  if (request.nextUrl.searchParams.get("asli") === "1") {
-    // basename memotong komponen direktori: nama berkas berasal dari database,
-    // dan tidak ada gunanya mempercayainya sebagai lintasan.
-    const nama = basename(berkas.nama_berkas);
-    try {
-      const isi = await readFile(join(DIR_BERKAS, nama));
-      return new NextResponse(new Uint8Array(isi), {
-        headers: {
-          "Content-Type": tipeBerkasAsli(nama),
-          "Content-Disposition": `attachment; filename="${nama}"`,
-          "Cache-Control": "no-store",
-        },
-      });
-    } catch {
-      return NextResponse.json(
-        { pesan: `Berkas asli ${nama} tidak ditemukan di server.` },
-        { status: 404 },
-      );
-    }
-  }
 
   const baris = await ambilSemuaDraf(jenis);
   const buffer = await bangunDrafExcel(berkas, baris);

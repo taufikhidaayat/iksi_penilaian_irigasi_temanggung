@@ -974,7 +974,14 @@ export function FormPenilaian(props: FormPenilaianProps) {
                         value={nilaiInput}
                         disabled={!bisaEdit}
                         onChange={(e) => {
-                          set(e.target.value);
+                          const v = e.target.value;
+                          // Hanya digit murni atau kosong yang diterima. Input number
+                          // browser tetap mengizinkan mengetik "-", "." atau "e" sebagai
+                          // status peralihan, dan itu membuat Number(v) jadi NaN saat
+                          // disimpan — gagal validasi Zod dengan pesan yang tidak
+                          // menunjuk ke sini sama sekali.
+                          if (v !== "" && !/^\d+$/.test(v)) return;
+                          set(v);
                           setKotor(true);
                         }}
                         className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none disabled:bg-slate-100"

@@ -9,7 +9,7 @@ import type {
   Upt,
 } from "@/lib/supabase/types";
 
-import type { BarisNilaiAset } from "@/lib/iksi/per-bangunan";
+import { INDIKATOR_PER_UNIT, type BarisNilaiAset } from "@/lib/iksi/per-bangunan";
 import type { NilaiInput } from "@/lib/iksi/types";
 import { TRIWULAN } from "@/lib/periode";
 
@@ -98,6 +98,15 @@ export async function ambilPenilaian(id: string): Promise<PenilaianLengkap | nul
     PenilaianNilai,
     "indikator_kode" | "nilai" | "keterangan"
   >[]) {
+    // Indikator yang dinilai per bangunan juga tersimpan di sini (hasil
+    // rata-ratanya, sering pecahan — mis. 70.417 dari tiga bangunan), demi
+    // rekap & ekspor yang membaca tabel ini apa adanya. Tapi bagi form, nilai
+    // yang benar datang dari `nilaiAset` dan dihitung ulang lewat
+    // `gabungNilai()`; kalau pecahan ini ikut masuk ke `nilai`, ia terbawa ke
+    // `nilai` sisi klien lalu ke payload simpan berikutnya — dan `nilai` di
+    // skema Zod mewajibkan bilangan bulat, jadi seluruh form gagal disimpan
+    // sampai halamannya dimuat ulang.
+    if (INDIKATOR_PER_UNIT.has(b.indikator_kode)) continue;
     nilai[b.indikator_kode] = b.nilai;
     if (b.keterangan) keterangan[b.indikator_kode] = b.keterangan;
   }
