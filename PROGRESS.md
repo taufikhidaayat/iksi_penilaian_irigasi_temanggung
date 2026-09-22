@@ -44,6 +44,8 @@ npm run db:verifikasi   # periksa RLS, trigger, dan integritas katalog
 | `supabase/migrations/0017_bendung_baru.sql` | Nilai enum `bendung_baru`, wadah draf bendung versi berkas GIS .dbf |
 | `supabase/migrations/0018_ringkasan_aset_unik.sql` | View ringkasan: pisahkan jumlah aset (identitas berbeda) dari jumlah baris |
 | `supabase/migrations/0019_ringkasan_aset_draf.sql` | View ringkasan draf, bentuknya sejalan dengan `ringkasan_aset` |
+| `supabase/migrations/0020_panjang_saluran.sql` | Kolom `aset.panjang` (meter) dari berkas GIS |
+| `supabase/migrations/0021_salin_penilaian_periode.sql` | Fungsi `salin_penilaian_periode()` untuk menyalin satu periode sekaligus |
 
 > Runner mencatat migrasi yang sudah dijalankan di tabel `_migrasi`, jadi
 > `npm run db:migrasi` aman diulang — hanya berkas baru yang dieksekusi, dan
@@ -716,6 +718,8 @@ npm test     →  137 passed
 - [x] **Form penilaian** — tab per komponen, kartu 4-deskriptor klik-cepat,
       slider penyetel, skor langsung, autosave 2 detik, tab Areal Terdampak
 - [x] Alur status: draft → diajukan → disetujui / revisi
+- [x] **Salin penilaian periode sebelumnya** — per D.I. dari dalam form, dan
+      satu periode sekaligus lewat fungsi SQL; yang sudah dinilai dilewati
 - [x] **Rekapitulasi** — tabel gaya template, filter UPT, paginasi, baris Total
 - [x] **Ekspor Excel** — pratinjau + unduh, blok tanda tangan bisa diatur
 - [x] **Daerah Irigasi** — master data, pencarian
@@ -739,6 +743,10 @@ npm test     →  137 passed
 ## Yang BELUM
 
 - [ ] Ganti kata sandi admin & UPT bawaan
+- [ ] Jalankan migrasi 0021 ke Supabase (`npm run db:migrasi`). Tombol "Salin
+      dari periode lain" tidak akan jalan sebelum fungsinya ada di database
+- [ ] Penanda asal salinan (`disalin_dari` + lencana), supaya verifikator bisa
+      membedakan penilaian salinan dari hasil survei baru
 - [ ] Buat akun UPT sungguhan lewat menu Pengguna
 - [ ] Uji alur lengkap lewat UI: isi penilaian → ajukan → admin setujui → ekspor
 - [ ] Buka `IKSI_2026_TWIII.xlsx` di Excel, bandingkan visual dengan template
@@ -766,6 +774,43 @@ sumber kebenaran.
 
 **Skor dihitung ulang di server** saat simpan — angka kiriman browser tidak
 dipercaya, supaya rekap & ekspor tidak bisa dimanipulasi dari klien.
+
+**Menyalin penilaian triwulan sebelumnya.** Kondisi jaringan jarang berubah
+banyak antar triwulan, sedangkan satu UPT memegang sampai 175 D.I. berisi 158
+indikator. Ada dua jalan, keduanya menghasilkan draf yang tetap harus diperiksa
+dan diajukan seperti biasa:
+
+| Jalan | Letak | Lingkup |
+|---|---|---|
+| Per D.I. | kartu di dalam form penilaian yang sedang dibuka | satu D.I., sumbernya dipilih dari riwayat D.I. itu |
+| Satu periode sekaligus | tombol di sebelah pemilih periode, halaman Penilaian | seluruh D.I. dalam lingkup UPT yang sedang tampil |
+
+**D.I. yang sudah punya penilaian di periode tujuan tidak pernah disentuh**, apa
+pun statusnya. Karena itu tombolnya aman ditekan berulang kali dan draf yang
+sedang dikerjakan orang lain tidak ikut tertimpa. Laporannya menyebut tiga
+angka: berapa yang disalin, berapa dilewati karena sudah dinilai, dan berapa
+D.I. yang tetap harus diisi tangan karena periode sumbernya juga kosong.
+
+Salinan sekaligus dikerjakan **fungsi SQL** (`salin_penilaian_periode`), bukan
+loop PostgREST dari server action: satu UPT bisa berarti puluhan ribu baris
+`penilaian_aset_nilai` (D.I. terberat sendirian 5.197 baris), yang lewat HTTP
+berarti ratusan permintaan berurutan dan hampir pasti kehabisan waktu di tengah
+jalan.
+
+⚠️ **Fungsi SQL itu TIDAK menghitung skor.** `total`, `skor_komponen`,
+`jml_terisi`, dan `jml_indikator` disalin apa adanya bersama seluruh nilai yang
+melahirkannya, jadi angkanya identik tanpa perlu meniru mesin skoring ke dalam
+SQL. Meniru berarti punya dua sumber kebenaran untuk angka yang sudah
+diverifikasi 0-mismatch terhadap Excel, dan cepat atau lambat yang satu akan
+ketinggalan. Begitu salinannya dibuka lalu diajukan, `simpanPenilaian`
+menghitung ulang semuanya dari katalog. Salinan per D.I. memang lewat jalur itu
+sejak awal: nilainya dituang ke state form, lalu tersimpan lewat autosave biasa.
+
+Penanda asal salinan (mis. lencana "Disalin dari Triwulan II") **belum dibuat**,
+dan itu lubang yang disadari: satu UPT bisa "menyelesaikan" 175 D.I. dalam
+sekali klik tanpa ke lapangan, dan Administrator yang memverifikasi tidak punya
+cara membedakannya dari hasil survei sungguhan. Penanda `massal` pada nilai per
+bangunan ada persis karena alasan yang sama.
 
 **Hijau Excel hanya untuk tombol yang menghasilkan berkas.** Varian tombol
 `excel` (`--color-excel-600` = #107C41) dan `<IkonExcel>` dipakai bertiga saja:
@@ -907,3 +952,14 @@ jumlah baris bisa mengikuti filter UPT tanpa merusak merge di bawah tabel.
     Datanya tetap tersimpan benar karena select aslinya utuh; yang salah hanya
     yang dibaca manusia, dan itu justru dasar keputusannya. Sekarang isi option
     dirangkai rekursif lewat `teksAnak()`.
+28. **`Pilihan` di dalam `Dialog` memunculkan scrollbar dan panelnya terpotong.**
+    Panel melayang `Pilihan` berposisi `absolute`, sedangkan `Dialog` menyetel
+    `max-h-[calc(100dvh-2rem)] overflow-y-auto` supaya isi yang panjang tetap
+    muat di layar. Elemen berposisi absolut TETAP dihitung sebagai luapan oleh
+    leluhur yang bisa digulir, jadi begitu dropdown dibuka, dialognya ikut
+    tumbuh: scrollbar muncul di kanan dan ujung panelnya terpotong di tepi
+    dialog. Makin panjang daftarnya makin parah, dan `daftarTahun()` yang
+    berisi 7 tahun sudah cukup untuk memicunya. Untuk memilih sesuatu di dalam
+    dialog, pakai daftar tombol yang mengalir biasa dengan `overflow-y-auto`
+    sendiri (pola `DialogBuat` dan `SalinPeriode`), bukan `Pilihan`. Di halaman
+    biasa `Pilihan` tetap aman karena tidak ada leluhur yang menggulir.

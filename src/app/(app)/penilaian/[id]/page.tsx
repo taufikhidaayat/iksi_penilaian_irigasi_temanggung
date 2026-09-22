@@ -6,9 +6,15 @@ import { ChevronLeft } from "lucide-react";
 import { FormPenilaian } from "@/components/penilaian/form-penilaian";
 import { ambilSesi } from "@/lib/auth";
 import { ambilAsetPerDi } from "@/lib/data/aset";
-import { ambilPenilaian } from "@/lib/data/penilaian";
+import { ambilPenilaian, ambilRiwayatPenilaianDi } from "@/lib/data/penilaian";
 
-import { hapusPenilaian, simpanPenilaian, ubahStatus, ulangiPenilaian } from "../actions";
+import {
+  ambilSumberSalin,
+  hapusPenilaian,
+  simpanPenilaian,
+  ubahStatus,
+  ulangiPenilaian,
+} from "../actions";
 
 export default async function HalamanFormPenilaian({ params }: PageProps<"/penilaian/[id]">) {
   const { id } = await params;
@@ -23,11 +29,19 @@ export default async function HalamanFormPenilaian({ params }: PageProps<"/penil
   if (!sesi.isAdmin && penilaian.upt_id !== sesi.profil.upt_id) notFound();
 
   const bisaEdit = sesi.isAdmin || ["draft", "revisi"].includes(penilaian.status);
-  const aset = await ambilAsetPerDi(di.id);
+  const [aset, riwayat] = await Promise.all([
+    ambilAsetPerDi(di.id),
+    ambilRiwayatPenilaianDi(di.id, id),
+  ]);
 
   async function simpan(muatan: Parameters<typeof simpanPenilaian>[0]) {
     "use server";
     return simpanPenilaian(muatan);
+  }
+
+  async function salinDari(idSumber: string) {
+    "use server";
+    return ambilSumberSalin(id, idSumber);
   }
 
   async function ajukan() {
@@ -76,7 +90,9 @@ export default async function HalamanFormPenilaian({ params }: PageProps<"/penil
         bisaEdit={bisaEdit}
         isAdmin={sesi.isAdmin}
         aset={aset}
+        riwayat={riwayat}
         onSimpan={simpan}
+        onSalinDari={salinDari}
         onAjukan={ajukan}
         onSetujui={setujui}
         onRevisi={revisi}

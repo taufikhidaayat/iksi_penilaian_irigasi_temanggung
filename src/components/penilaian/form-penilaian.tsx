@@ -9,6 +9,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Loader2,
   RefreshCw,
   RotateCcw,
@@ -22,6 +23,7 @@ import { BilahProgres, Kartu, KartuIsi, KartuJudul, KartuKepala, Lencana, Piliha
 import { JENIS_ASET } from "@/lib/aset";
 import { useKonfirmasi } from "@/components/ui/konfirmasi";
 import { useToast } from "@/components/ui/toast";
+import type { RiwayatPenilaian } from "@/lib/data/penilaian";
 import {
   gabungNilai,
   indikatorUntukAset,
@@ -50,6 +52,17 @@ import { PanelPerBangunan, kunciSel, type PetaNilaiAset } from "./panel-per-bang
 import { PohonIndikator } from "./pohon-indikator";
 
 type Simpanan = { ok: boolean; pesan?: string };
+
+/** Bentuk data yang dituang ke state form saat "salin dari periode lain". */
+type HasilSalinan = {
+  kantongLumpur: KantongLumpur;
+  jumlahP3a: number | null;
+  jumlahGp3a: number | null;
+  nilai: NilaiInput;
+  keterangan: Record<string, string>;
+  nilaiAset: BarisNilaiAsetTerisi[];
+  areal: NilaiAreal | null;
+};
 
 /** Tab khusus penilaian per bangunan, disisipkan tepat setelah Komponen I. */
 const TAB_BANGUNAN = "bangunan";
@@ -99,6 +112,17 @@ export interface FormPenilaianProps {
   isAdmin: boolean;
   /** Aset terdaftar pada D.I. ini, sebagai konteks saat menilai. */
   aset: KelompokAset[];
+  /** Penilaian lain pada D.I. ini yang sudah punya isian, bahan "salin dari periode lain". */
+  riwayat: RiwayatPenilaian[];
+  /**
+   * Mengambil isian penilaian lain pada D.I. yang sama untuk disalin. Tidak
+   * menulis apa pun — hasilnya dituang ke state form, lalu tersimpan lewat
+   * autosave biasa supaya skor tetap dihitung ulang di server.
+   */
+  onSalinDari: (idSumber: string) => Promise<
+    | { ok: true; data: HasilSalinan }
+    | { ok: false; pesan: string }
+  >;
   onSimpan: (muatan: {
     id: string;
     kantongLumpur: KantongLumpur;
@@ -155,7 +179,7 @@ function daunRelevan(kodeAkar: string, kl: KantongLumpur): string[] {
 }
 
 export function FormPenilaian(props: FormPenilaianProps) {
-  const { penilaian, di, namaUpt, bisaEdit, isAdmin } = props;
+  const { penilaian, di, namaUpt, bisaEdit, isAdmin, riwayat } = props;
   const router = useRouter();
 
   // Sama seperti kebijakan RLS "hapus penilaian" di database: admin bebas,
@@ -198,6 +222,7 @@ export function FormPenilaian(props: FormPenilaianProps) {
         }
       : AREAL_KOSONG,
   );
+  const [sumberSalinan, setSumberSalinan] = useState<string>(riwayat[0]?.id ?? "");
 
   const toast = useToast();
   const konfirmasi = useKonfirmasi();
@@ -206,6 +231,7 @@ export function FormPenilaian(props: FormPenilaianProps) {
   const [menyimpan, setMenyimpan] = useState(false);
   const [mengulangi, setMengulangi] = useState(false);
   const [menghapus, setMenghapus] = useState(false);
+  const [menyalin, setMenyalin] = useState(false);
   const [pesan, setPesan] = useState<{ jenis: "ok" | "galat"; teks: string } | null>(null);
   const [kotor, setKotor] = useState(false);
 
@@ -605,6 +631,49 @@ export function FormPenilaian(props: FormPenilaianProps) {
     }
   }
 
+  async function salinDari() {
+    if (!sumberSalinan) return;
+    const sumber = riwayat.find((r) => r.id === sumberSalinan);
+    const labelSumber = sumber ? `${sumber.triwulan} ${sumber.tahun}` : "periode terpilih";
+
+    const setuju = await konfirmasi({
+      judul: `Salin nilai dari ${labelSumber}?`,
+      pesan:
+        skor.terisi > 0
+          ? `Seluruh isian yang sudah ada di ${penilaian.triwulan} ${penilaian.tahun} akan ditimpa dengan nilai dari ${labelSumber}.`
+          : `Nilai indikator, kantong lumpur, dan areal terdampak dari ${labelSumber} akan disalin ke sini.`,
+      catatan: "Nilai yang tersalin tetap bisa diubah lagi sebelum diajukan.",
+      tombolYa: "Ya, salin",
+      nada: skor.terisi > 0 ? "peringatan" : "biasa",
+    });
+    if (!setuju) return;
+
+    setMenyalin(true);
+    const hasil = await props.onSalinDari(sumberSalinan);
+    setMenyalin(false);
+
+    if (!hasil.ok) {
+      toast.galat("Gagal menyalin", hasil.pesan);
+      return;
+    }
+
+    const { data } = hasil;
+    setNilai(data.nilai);
+    setKeterangan(data.keterangan);
+    const peta: PetaNilaiAset = {};
+    for (const b of data.nilaiAset) {
+      peta[kunciSel(b.asetId, b.indikatorKode)] = { nilai: b.nilai, massal: b.massal ?? false };
+    }
+    setNilaiAset(peta);
+    setKantongLumpur(data.kantongLumpur);
+    setJumlahP3a(data.jumlahP3a?.toString() ?? "");
+    setJumlahGp3a(data.jumlahGp3a?.toString() ?? "");
+    setAreal(data.areal ?? AREAL_KOSONG);
+    setAsetKotor(true);
+    setKotor(true);
+    toast.sukses("Nilai disalin", `Dari ${labelSumber}. Tersimpan otomatis sebentar lagi.`);
+  }
+
   /** Mengubah kantong lumpur menggeser bobot dan mematikan sebagian indikator. */
   async function ubahKantongLumpur(baru: KantongLumpur) {
     if (baru === kantongLumpur) return;
@@ -676,6 +745,44 @@ export function FormPenilaian(props: FormPenilaianProps) {
             </div>
           </KartuIsi>
         </Kartu>
+
+        {/* ------------------------------------------- salin dari periode lain */}
+        {bisaEdit && riwayat.length > 0 ? (
+          <Kartu className="border-brand-200 bg-brand-50/40">
+            <KartuIsi className="flex flex-wrap items-center gap-3 py-4">
+              <Copy className="h-4 w-4 shrink-0 text-brand-600" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-slate-800">Salin nilai dari periode lain</p>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  Lewati pengisian ulang kalau kondisinya belum banyak berubah dari triwulan
+                  sebelumnya.
+                </p>
+              </div>
+              <Pilihan
+                value={sumberSalinan}
+                onChange={(e) => setSumberSalinan(e.target.value)}
+                className="h-9 w-52 shrink-0 text-xs"
+                aria-label="Pilih periode sumber salinan"
+              >
+                {riwayat.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.triwulan} {r.tahun} · {r.total !== null ? formatAngka(r.total, 2) : "-"} ·{" "}
+                    {INFO_STATUS[r.status].label}
+                  </option>
+                ))}
+              </Pilihan>
+              <Tombol
+                varian="garis"
+                className="shrink-0"
+                onClick={() => void salinDari()}
+                disabled={menyalin}
+              >
+                {menyalin ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+                Salin
+              </Tombol>
+            </KartuIsi>
+          </Kartu>
+        ) : null}
 
         {/* -------------------------------------------- toggle kantong lumpur */}
         <Kartu className="border-amber-200 bg-amber-50/40">

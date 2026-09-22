@@ -26,6 +26,14 @@ export interface Periode {
   triwulan: PeriodeTriwulan;
 }
 
+/** Triwulan tepat sebelum periode ini; Triwulan I mundur ke Triwulan IV tahun lalu. */
+export function periodeSebelumnya({ tahun, triwulan }: Periode): Periode {
+  const i = TRIWULAN.indexOf(triwulan);
+  return i > 0
+    ? { tahun, triwulan: TRIWULAN[i - 1] }
+    : { tahun: tahun - 1, triwulan: TRIWULAN[TRIWULAN.length - 1] };
+}
+
 /** Baca periode dari query string, jatuh ke periode berjalan bila tidak valid. */
 export function bacaPeriode(
   sp: Record<string, string | string[] | undefined>,

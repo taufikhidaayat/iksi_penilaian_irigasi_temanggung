@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { FilterPeriode } from "@/components/layout/filter-periode";
 import { KepalaHalaman } from "@/components/layout/kepala-halaman";
 import { PapanPenilaian } from "@/components/penilaian/papan-penilaian";
+import { SalinPeriode } from "@/components/penilaian/salin-periode";
 import { ambilSesi } from "@/lib/auth";
 import { ambilPapanPenilaian } from "@/lib/data/penilaian";
 import { bacaPeriode } from "@/lib/periode";
@@ -36,12 +37,28 @@ export default async function HalamanDaftarPenilaian({ searchParams }: PageProps
     cookies(),
   ]);
 
+  const belumDinilai = daftar.filter((k) => k.penilaianId === null).length;
+  const lingkup = sesi.isAdmin
+    ? (daftarUpt?.find((u) => String(u.id) === uptTerpilih)?.nama ?? "Seluruh UPT")
+    : (sesi.upt?.nama ?? "UPT Anda");
+
   return (
     <>
       <KepalaHalaman
         judul="Penilaian"
         deskripsi={`${triwulan} ${tahun}`}
-        aksi={<FilterPeriode tahun={tahun} triwulan={triwulan} />}
+        aksi={
+          <>
+            <SalinPeriode
+              tahun={tahun}
+              triwulan={triwulan}
+              uptId={uptTerpilih}
+              lingkup={lingkup}
+              belumDinilai={belumDinilai}
+            />
+            <FilterPeriode tahun={tahun} triwulan={triwulan} />
+          </>
+        }
       />
 
       <PapanPenilaian

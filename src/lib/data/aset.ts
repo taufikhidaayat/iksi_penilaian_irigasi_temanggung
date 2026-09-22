@@ -215,6 +215,7 @@ type AsetRingkas = Pick<
   | "kecamatan"
   | "bangunan_hulu"
   | "bangunan_hilir"
+  | "panjang"
   | "nama_di_buku"
   | "perlu_tinjau"
 >;
@@ -249,7 +250,7 @@ export async function ambilAsetPerDi(
       // teks select ini, dan hasil penyambungan string ter-infer jadi `string`
       // biasa sehingga seluruh baris jatuh ke tipe galat.
       .select(
-        "id, jenis, nomenklatur, nama, kode, desa, kecamatan, bangunan_hulu, bangunan_hilir, nama_di_buku, perlu_tinjau",
+        "id, jenis, nomenklatur, nama, kode, desa, kecamatan, bangunan_hulu, bangunan_hilir, panjang, nama_di_buku, perlu_tinjau",
       )
       .eq("di_id", diId)
       .order("jenis")
@@ -274,6 +275,7 @@ export async function ambilAsetPerDi(
       kecamatan: a.kecamatan,
       bangunan_hulu: a.bangunan_hulu,
       bangunan_hilir: a.bangunan_hilir,
+      panjang: a.panjang,
       nama_di_buku: a.nama_di_buku,
       perlu_tinjau: a.perlu_tinjau,
     };

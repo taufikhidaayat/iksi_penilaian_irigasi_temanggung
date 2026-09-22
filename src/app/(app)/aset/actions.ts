@@ -164,6 +164,9 @@ export async function tambahAset(muatan: MuatanAset): Promise<HasilAset> {
     kode_di_buku: null,
     nama_di_buku: null,
     seksi_buku: null,
+    // Panjang saluran datang dari berkas GIS, bukan dari form ini. Lihat
+    // `npm run lengkapi-saluran`.
+    panjang: null,
     perlu_tinjau: false,
     alasan_tinjau: null,
   });

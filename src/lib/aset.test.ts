@@ -68,9 +68,39 @@ describe("letakAset", () => {
 describe("rincianAset", () => {
   it("memuat seluruh keping identitas sebuah saluran", () => {
     const r = rincianAset(SALURAN_SIRANDU, "saluran");
-    expect(r.map((x) => x.label)).toEqual(["Jenis", "Nomenklatur", "Ruas", "Letak", "Nomor aset"]);
+    expect(r.map((x) => x.label)).toEqual([
+      "Jenis",
+      "Nomenklatur",
+      "Ruas",
+      "Panjang",
+      "Letak",
+      "Nomor aset",
+    ]);
     expect(r.find((x) => x.label === "Ruas")?.nilai).toBe("Buang → Sadap Alam");
     expect(r.find((x) => x.label === "Nomor aset")?.nilai).toBe(SALURAN_SIRANDU.kode);
+  });
+
+  it("menampilkan panjang saluran dipotong dua angka, tidak dibulatkan", () => {
+    const r = rincianAset({ ...SALURAN_SIRANDU, panjang: 408.753658239 }, "saluran");
+    expect(r.find((x) => x.label === "Panjang")?.nilai).toBe("408,75 m");
+  });
+
+  it("menandai panjang yang belum terdata, bukan menghilangkan barisnya", () => {
+    const r = rincianAset({ ...SALURAN_SIRANDU, panjang: null }, "saluran");
+    const panjang = r.find((x) => x.label === "Panjang");
+    expect(panjang?.nilai).toBe("belum terdata");
+    expect(panjang?.kosong).toBe(true);
+  });
+
+  it("membedakan panjang 0 dari panjang yang belum terdata", () => {
+    // 43 saluran tercatat 0 di berkas GIS; itu keterangan, bukan data kosong.
+    const r = rincianAset({ ...SALURAN_SIRANDU, panjang: 0 }, "saluran");
+    expect(r.find((x) => x.label === "Panjang")?.nilai).toBe("0,00 m");
+  });
+
+  it("tidak menyebut panjang pada jenis selain saluran", () => {
+    const r = rincianAset(SALURAN_SIRANDU, "bendung");
+    expect(r.map((x) => x.label)).not.toContain("Panjang");
   });
 
   it("menampilkan keping yang kosong sebagai peringatan, bukan menghilangkannya", () => {

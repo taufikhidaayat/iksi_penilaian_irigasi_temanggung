@@ -11,10 +11,11 @@ import {
   gabungNilai,
   indikatorUntukAset,
   type BarisNilaiAset,
+  type BarisNilaiAsetTerisi,
 } from "@/lib/iksi/per-bangunan";
 import { INDIKATOR_INPUT, NODE_BY_KODE, hitungSkor, isRelevan } from "@/lib/iksi/scoring";
 import type { NilaiInput } from "@/lib/iksi/types";
-import { ambilNilaiAset } from "@/lib/data/penilaian";
+import { ambilNilaiAset, ambilPenilaian } from "@/lib/data/penilaian";
 import { createClient } from "@/lib/supabase/server";
 import type {
   JenisAset,
@@ -507,4 +508,146 @@ export async function ulangiPenilaian(id: string): Promise<HasilAksi> {
 
   revalidatePath("/penilaian");
   return { ok: true, id: baru.id };
+}
+
+/* ------------------------------------------------------------------ */
+/* Salin seluruh periode                                               */
+/* ------------------------------------------------------------------ */
+
+const SkemaSalinPeriode = z.object({
+  tahunSumber: z.coerce.number().int().min(2000).max(2100),
+  triwulanSumber: z.enum(["Triwulan I", "Triwulan II", "Triwulan III", "Triwulan IV"]),
+  tahun: z.coerce.number().int().min(2000).max(2100),
+  triwulan: z.enum(["Triwulan I", "Triwulan II", "Triwulan III", "Triwulan IV"]),
+  /** Diabaikan untuk petugas UPT: lingkupnya selalu dipaksa ke UPT-nya sendiri. */
+  uptId: z.coerce.number().int().positive().nullish(),
+});
+
+export interface HasilSalinPeriode extends HasilAksi {
+  disalin?: number;
+  sudahAda?: number;
+  tanpaSumber?: number;
+}
+
+/**
+ * Menyalin seluruh penilaian satu periode ke periode lain sekaligus.
+ *
+ * Pekerjaan beratnya ada di fungsi SQL `salin_penilaian_periode` (migrasi
+ * 0021), bukan di sini: satu UPT bisa berarti puluhan ribu baris nilai per
+ * bangunan, dan memindahkannya lewat PostgREST satu per satu pasti melewati
+ * batas waktu. Yang dikerjakan di sini hanya menentukan lingkup UPT-nya.
+ */
+export async function salinPeriode(
+  muatan: z.input<typeof SkemaSalinPeriode>,
+): Promise<HasilSalinPeriode> {
+  const parsed = SkemaSalinPeriode.safeParse(muatan);
+  if (!parsed.success) return { ok: false, pesan: "Periode tidak valid." };
+
+  const { tahunSumber, triwulanSumber, tahun, triwulan, uptId } = parsed.data;
+  if (tahunSumber === tahun && triwulanSumber === triwulan) {
+    return { ok: false, pesan: "Periode sumber dan periode tujuan tidak boleh sama." };
+  }
+
+  const sesi = await ambilSesi();
+  const supabase = await createClient();
+
+  // RLS sudah menutup jalan ke UPT lain, tetapi lingkupnya tetap ditentukan di
+  // sini supaya angka laporannya benar: hitungan "belum ada sumbernya" membaca
+  // `daerah_irigasi` yang memang boleh dibaca semua UPT.
+  const lingkupUpt = sesi.isAdmin ? (uptId ?? null) : sesi.profil.upt_id;
+
+  const { data, error } = await supabase.rpc("salin_penilaian_periode", {
+    p_tahun_sumber: tahunSumber,
+    p_triwulan_sumber: triwulanSumber as PeriodeTriwulan,
+    p_tahun: tahun,
+    p_triwulan: triwulan as PeriodeTriwulan,
+    p_upt_id: lingkupUpt,
+  });
+
+  if (error) return { ok: false, pesan: "Gagal menyalin penilaian." };
+
+  const hasil = data?.[0];
+  revalidatePath("/penilaian");
+  return {
+    ok: true,
+    disalin: hasil?.disalin ?? 0,
+    sudahAda: hasil?.sudah_ada ?? 0,
+    tanpaSumber: hasil?.tanpa_sumber ?? 0,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Salin dari periode lain                                             */
+/* ------------------------------------------------------------------ */
+
+export interface SumberSalinan {
+  kantongLumpur: OpsiKantongLumpur;
+  jumlahP3a: number | null;
+  jumlahGp3a: number | null;
+  nilai: NilaiInput;
+  keterangan: Record<string, string>;
+  nilaiAset: BarisNilaiAsetTerisi[];
+  areal: {
+    bangunan_utama: number;
+    saluran_pembawa: number;
+    bangunan_saluran_pembawa: number;
+    saluran_pembuang: number;
+    jalan_inspeksi: number;
+    kantor_perumahan_gudang: number;
+  } | null;
+}
+
+/**
+ * Mengambil isian penilaian lain pada D.I. yang sama, untuk ditawarkan sebagai
+ * bahan salinan saat mengisi periode baru.
+ *
+ * Tidak menulis apa pun ke database — hasilnya dituang ke state form di
+ * klien, dan tersimpan lewat jalur autosave biasa (`simpanPenilaian`), supaya
+ * skor tetap dihitung ulang di server dan nilai per bangunan tetap disaring
+ * ulang terhadap register aset D.I. ini, persis seperti simpan manual.
+ */
+export async function ambilSumberSalin(
+  idTujuan: string,
+  idSumber: string,
+): Promise<{ ok: true; data: SumberSalinan } | { ok: false; pesan: string }> {
+  const supabase = await createClient();
+
+  const { data: tujuan } = await supabase
+    .from("penilaian")
+    .select("id, di_id")
+    .eq("id", idTujuan)
+    .maybeSingle();
+  if (!tujuan) return { ok: false, pesan: "Penilaian tidak ditemukan." };
+
+  const sumber = await ambilPenilaian(idSumber);
+  if (!sumber) return { ok: false, pesan: "Penilaian sumber tidak ditemukan." };
+
+  // D.I. yang berbeda berarti register aset dan indikator relevannya juga
+  // berbeda. RLS sudah menjaga batas antar-UPT; ini menjaga batas antar-D.I.
+  // dalam UPT yang sama, yang RLS sendiri tidak mengurusi.
+  if (sumber.penilaian.di_id !== tujuan.di_id) {
+    return { ok: false, pesan: "Sumber salinan harus dari D.I. yang sama." };
+  }
+
+  return {
+    ok: true,
+    data: {
+      kantongLumpur: sumber.penilaian.kantong_lumpur,
+      jumlahP3a: sumber.penilaian.jumlah_p3a,
+      jumlahGp3a: sumber.penilaian.jumlah_gp3a,
+      nilai: sumber.nilai,
+      keterangan: sumber.keterangan,
+      nilaiAset: sumber.nilaiAset.filter((b): b is BarisNilaiAsetTerisi => b.nilai !== null),
+      areal: sumber.areal
+        ? {
+            bangunan_utama: Number(sumber.areal.bangunan_utama),
+            saluran_pembawa: Number(sumber.areal.saluran_pembawa),
+            bangunan_saluran_pembawa: Number(sumber.areal.bangunan_saluran_pembawa),
+            saluran_pembuang: Number(sumber.areal.saluran_pembuang),
+            jalan_inspeksi: Number(sumber.areal.jalan_inspeksi),
+            kantor_perumahan_gudang: Number(sumber.areal.kantor_perumahan_gudang),
+          }
+        : null,
+    },
+  };
 }

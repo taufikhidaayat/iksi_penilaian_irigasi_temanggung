@@ -150,6 +150,8 @@ export type Aset = {
   kecamatan: string | null;
   bangunan_hulu: string | null;
   bangunan_hilir: string | null;
+  /** Panjang saluran dalam meter, dari berkas GIS. Lihat migrasi 0020. */
+  panjang: number | null;
   tahun: number | null;
   seksi_buku: string | null;
   perlu_tinjau: boolean;
@@ -242,7 +244,22 @@ export interface Database {
         Relationships: [];
       };
     };
-    Functions: { [_ in never]: never };
+    Functions: {
+      salin_penilaian_periode: {
+        Args: {
+          p_tahun_sumber: number;
+          p_triwulan_sumber: PeriodeTriwulan;
+          p_tahun: number;
+          p_triwulan: PeriodeTriwulan;
+          p_upt_id: number | null;
+        };
+        Returns: {
+          disalin: number;
+          sudah_ada: number;
+          tanpa_sumber: number;
+        }[];
+      };
+    };
     Enums: {
       peran_pengguna: PeranPengguna;
       status_penilaian: StatusPenilaian;

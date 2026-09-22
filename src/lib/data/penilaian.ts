@@ -11,6 +11,7 @@ import type {
 
 import type { BarisNilaiAset } from "@/lib/iksi/per-bangunan";
 import type { NilaiInput } from "@/lib/iksi/types";
+import { TRIWULAN } from "@/lib/periode";
 
 /** Ukuran halaman PostgREST. Batas `max-rows` Supabase juga 1000. */
 const PER_TARIKAN = 1000;
@@ -193,6 +194,38 @@ export async function ambilDiBelumDinilai(opsi: {
 
   const dipakai = new Set((sudah ?? []).map((p) => p.di_id));
   return (di ?? []).filter((d) => !dipakai.has(d.id));
+}
+
+export interface RiwayatPenilaian {
+  id: string;
+  tahun: number;
+  triwulan: PeriodeTriwulan;
+  status: StatusPenilaian;
+  total: number | null;
+}
+
+/**
+ * Penilaian lain pada D.I. yang sama yang sudah punya isian, ditawarkan
+ * sebagai sumber salinan saat mengisi periode baru. Diurutkan dari yang
+ * paling baru, supaya triwulan sebelumnya (sumber yang paling relevan)
+ * muncul duluan di dropdown.
+ */
+export async function ambilRiwayatPenilaianDi(
+  diId: number,
+  kecualikanId: string,
+): Promise<RiwayatPenilaian[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("penilaian")
+    .select("id, tahun, triwulan, status, total")
+    .eq("di_id", diId)
+    .neq("id", kecualikanId)
+    .gt("jml_terisi", 0);
+
+  return (data ?? []).sort(
+    (a, b) => b.tahun - a.tahun || TRIWULAN.indexOf(b.triwulan) - TRIWULAN.indexOf(a.triwulan),
+  );
 }
 
 /* ------------------------------------------------------------------ */

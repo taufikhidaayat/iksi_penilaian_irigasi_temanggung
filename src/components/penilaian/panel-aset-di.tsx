@@ -19,6 +19,8 @@ export interface AsetRingkas {
   /** Khusus saluran: bangunan di hulu dan hilirnya, pembeda antar-ruas. */
   bangunan_hulu: string | null;
   bangunan_hilir: string | null;
+  /** Khusus saluran: panjang ruas dalam meter, dari berkas GIS. */
+  panjang: number | null;
   /** Nama D.I. sebagaimana tertulis di buku, untuk memergoki salah tautan. */
   nama_di_buku: string | null;
   perlu_tinjau: boolean;

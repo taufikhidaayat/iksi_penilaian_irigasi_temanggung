@@ -1,12 +1,6 @@
 import type { JenisAset } from "@/lib/supabase/types";
+import { formatPanjang } from "@/lib/utils";
 
-/**
- * Label dan konteks tiap jenis aset irigasi.
- *
- * Mengikuti Tabel 2.2 "Daftar Kodefikasi Tipe Bangunan Irigasi" pada
- * Buku Aset Irigasi 2026. `kodeTipe` adalah segmen tipe pada nomor aset
- * (mis. `33.23.010306.01538.[01]001.2002` → 01 = Bendung).
- */
 /**
  * Jenis aset yang benar-benar ada di Buku Aset Irigasi.
  *
@@ -17,6 +11,13 @@ import type { JenisAset } from "@/lib/supabase/types";
  */
 export type JenisAsetResmi = Exclude<JenisAset, "bendung_baru">;
 
+/**
+ * Label dan konteks tiap jenis aset irigasi.
+ *
+ * Mengikuti Tabel 2.2 "Daftar Kodefikasi Tipe Bangunan Irigasi" pada
+ * Buku Aset Irigasi 2026. `kodeTipe` adalah segmen tipe pada nomor aset
+ * (mis. `33.23.010306.01538.[01]001.2002` → 01 = Bendung).
+ */
 export interface InfoJenisAset {
   label: string;
   /** Bentuk singkat untuk lencana dan kolom sempit. */
@@ -255,6 +256,8 @@ export interface AsetBerlokasi {
   kecamatan: string | null;
   bangunan_hulu: string | null;
   bangunan_hilir: string | null;
+  /** Panjang saluran dalam meter. Null untuk jenis lain dan yang belum terdata. */
+  panjang?: number | null;
 }
 
 /**
@@ -298,6 +301,24 @@ export function rincianAset(a: AsetBerlokasi, jenis: JenisAset): { label: string
 
   const ruas = ruasAset(a);
   if (ruas) rincian.push({ label: "Ruas", nilai: ruas });
+
+  /*
+   * Panjang hanya berarti bagi saluran, dan di sanalah ia paling dibutuhkan:
+   * seluruh 4.642 saluran bernama sama, jadi panjang adalah salah satu dari
+   * sedikit keping yang benar-benar membedakan satu ruas dari ruas lain saat
+   * petugas mencocokkannya di lapangan.
+   *
+   * Barisnya DIIKUTKAN dengan penanda ketika kosong, sama seperti letak:
+   * "belum terdata" adalah keterangan yang perlu dilihat, bukan baris yang
+   * pantas dihilangkan diam-diam.
+   */
+  if (jenis === "saluran") {
+    rincian.push(
+      a.panjang === null || a.panjang === undefined
+        ? { label: "Panjang", nilai: "belum terdata", kosong: true }
+        : { label: "Panjang", nilai: formatPanjang(a.panjang) },
+    );
+  }
 
   const letak = letakAset(a);
   rincian.push(

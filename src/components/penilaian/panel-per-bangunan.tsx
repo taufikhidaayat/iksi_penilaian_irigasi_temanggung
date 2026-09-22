@@ -36,7 +36,7 @@ import { dinilaiPerUnit, kelompokUntukAset } from "@/lib/iksi/per-bangunan";
 import { bobotEfektif } from "@/lib/iksi/scoring";
 import type { KantongLumpur } from "@/lib/iksi/types";
 import type { JenisAset } from "@/lib/supabase/types";
-import { cn } from "@/lib/utils";
+import { cn, formatPanjang } from "@/lib/utils";
 
 import { KartuIndikator } from "./kartu-indikator";
 import type { KelompokAset } from "./panel-aset-di";
@@ -522,6 +522,19 @@ export function PanelPerBangunan({
                           </span>
                         </span>
                         {ruas ? <span className="min-w-0 truncate">{ruas}</span> : null}
+                        {/*
+                          Panjang ruas, khusus saluran. Ditaruh di daftar, bukan
+                          hanya di rincian bangunan terpilih, karena di sinilah
+                          petugas memilih ruas: seluruh saluran bernama serupa,
+                          dan panjang sering jadi satu-satunya pembeda yang bisa
+                          dicocokkan dengan keadaan lapangan tanpa membuka
+                          bangunannya satu per satu.
+                        */}
+                        {jenis === "saluran" && a.panjang !== null ? (
+                          <span className="shrink-0 font-medium tabular-nums text-slate-600">
+                            {formatPanjang(a.panjang)}
+                          </span>
+                        ) : null}
                       </span>
 
                       {/* Baris 3: nomor aset asli dan peringatan. Nomor aset
